@@ -15,11 +15,12 @@ A modern, containerized portfolio website built with Next.js, featuring photogra
 - 🎨 Dark theme with yellow accent branding
 - 📸 Photography gallery with collections
 - 💼 Portfolio/project showcase
-- 📝 About/CV page
-- 📬 Contact form
+- 📝 About/CV page with contact section
+- 📬 Simple contact page with bot-protected email
 - 🐳 Docker containerization for easy deployment
 - 📱 Fully responsive design
 - ⚡ Optimized images with Next.js Image component
+- 🚀 No server-side requirements (fully static)
 
 ## Project Structure
 
@@ -218,13 +219,17 @@ npm run build
 npm start
 ```
 
-## Contact Form
+## Contact
 
-The contact form currently shows a success message without actually sending emails. To implement email sending:
+The contact page uses a simple bot-protected email button that:
+- Splits the email address into parts (simple bot protection)
+- Opens mailto: link on click
+- No server-side requirements
 
-1. Add an API route: `app/api/contact/route.ts`
-2. Integrate with email service (SendGrid, Mailgun, Resend, etc.)
-3. Update `app/contact/page.tsx` to call the API
+Contact information also appears on the About page for easy access. Update your email and social links in:
+- `app/contact/page.tsx` - Contact page email button
+- `app/about/page.tsx` - About page contact section
+- `components/Navigation.tsx` - Header navigation links
 
 ## License
 

@@ -115,6 +115,43 @@ export default function AboutPage() {
           </div>
         </div>
       </section>
+
+      {/* Contact Section */}
+      <section className="container mx-auto px-6 py-20 border-t border-white/10">
+        <div className="max-w-4xl mx-auto text-center">
+          <h2 className="section-title mb-6">Let's work together</h2>
+          <p className="text-lg text-gray-300 mb-12">
+            Interested in collaborating? Get in touch to discuss your next project.
+          </p>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-6">
+            <a
+              href="mailto:hello@kaseymcdonnell.co.nz"
+              className="px-8 py-4 bg-brand-yellow text-brand-dark font-sans font-semibold rounded-full hover:bg-yellow-300 transition-colors"
+            >
+              Email Me
+            </a>
+            <div className="flex gap-4">
+              <a
+                href="https://www.linkedin.com/in/your-profile"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-brand-yellow hover:underline"
+              >
+                LinkedIn
+              </a>
+              <span className="text-gray-600">·</span>
+              <a
+                href="https://www.instagram.com/your-handle"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-brand-yellow hover:underline"
+              >
+                Instagram
+              </a>
+            </div>
+          </div>
+        </div>
+      </section>
     </div>
   )
 }
