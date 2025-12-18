@@ -1,9 +1,12 @@
 backend:
   name: git-gateway
-  branch: main # Branch to update (your main branch)
+  branch: main
 
-# For local development
+# Enable local development mode
 local_backend: true
+
+# Development overrides - use local proxy
+publish_mode: editorial_workflow
 
 media_folder: "public/images" # Where uploaded images will be saved
 public_folder: "/images" # URL path for uploaded images
