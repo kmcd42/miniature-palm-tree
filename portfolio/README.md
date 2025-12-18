@@ -192,9 +192,32 @@ After the initial setup, here's all you need to do:
 
 **The easiest way to edit your content!** No need to edit JSON files or code.
 
-#### Step 1: Start the CMS Backend
+#### Step 1: Start Everything with Docker (Easiest!)
 
-Open **two Terminal windows**:
+**Single command runs both the website AND CMS:**
+
+```bash
+cd /Users/kaseymcdonnell/portfolio/miniature-palm-tree/portfolio
+docker compose up
+```
+
+Wait for:
+- ✅ "ready - started server on 0.0.0.0:3000"
+- ✅ "Decap CMS Proxy Server listening on port 8081"
+
+**To run in background:**
+```bash
+docker compose up -d
+```
+
+**To stop:**
+```bash
+docker compose down
+```
+
+#### Alternative: Run Without Docker
+
+If you prefer running directly (two Terminal windows needed):
 
 **Terminal 1 - Run the website:**
 ```bash
@@ -206,12 +229,6 @@ npm run dev
 ```bash
 cd ~/Documents/miniature-palm-tree/portfolio
 npm run cms
-```
-
-You should see:
-```
-🚀 Starting Decap CMS local backend proxy...
-Decap Server listening on port 8081
 ```
 
 #### Step 2: Access the Admin Panel
