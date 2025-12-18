@@ -12,75 +12,98 @@ media_folder: "public/images" # Where uploaded images will be saved
 public_folder: "/images" # URL path for uploaded images
 
 collections:
+  # Site Settings - Basic site configuration
   - name: "settings"
     label: "Site Settings"
     files:
       - label: "Site Information"
         name: "site"
-        file: "data/content.json"
+        file: "data/site.json"
         fields:
-          - label: "Site"
-            name: "site"
+          - {label: "Site Title", name: "title", widget: "string"}
+          - {label: "Tagline", name: "tagline", widget: "string"}
+          - {label: "Email", name: "email", widget: "string"}
+          - label: "Social Media"
+            name: "social"
             widget: "object"
             fields:
-              - {label: "Title", name: "title", widget: "string"}
-              - {label: "Tagline", name: "tagline", widget: "string"}
-              - {label: "Email", name: "email", widget: "string"}
-              - label: "Social"
-                name: "social"
-                widget: "object"
-                fields:
-                  - {label: "Instagram URL", name: "instagram", widget: "string"}
-                  - {label: "LinkedIn URL", name: "linkedin", widget: "string"}
+              - {label: "Instagram URL", name: "instagram", widget: "string"}
+              - {label: "LinkedIn URL", name: "linkedin", widget: "string"}
 
-          - label: "Home Page"
-            name: "home"
-            widget: "object"
-            fields:
-              - {label: "Greeting", name: "greeting", widget: "string"}
-              - {label: "Introduction", name: "intro", widget: "text"}
-              - {label: "Hero Image", name: "heroImage", widget: "image"}
+  # Pages - Individual page content
+  - name: "pages"
+    label: "Pages"
+    files:
+      - label: "Homepage"
+        name: "home"
+        file: "data/pages/home.json"
+        fields:
+          - {label: "Greeting", name: "greeting", widget: "string", default: "Kia ora, ko Kasey ahau."}
+          - {label: "Introduction", name: "intro", widget: "text"}
+          - {label: "Hero Image", name: "heroImage", widget: "image", required: false}
+          - label: "Featured Work"
+            name: "featuredWork"
+            widget: "list"
+            required: false
+            field: {label: "Project ID", name: "id", widget: "string"}
 
-          - label: "About"
-            name: "about"
-            widget: "object"
-            fields:
-              - label: "Bio Paragraphs"
-                name: "bio"
-                widget: "list"
-                field: {label: "Paragraph", name: "paragraph", widget: "text"}
-              - label: "Skills"
-                name: "skills"
-                widget: "list"
-                field: {label: "Skill", name: "skill", widget: "string"}
-              - label: "Experience"
-                name: "experience"
-                widget: "list"
-                fields:
-                  - {label: "Role", name: "role", widget: "string"}
-                  - {label: "Company", name: "company", widget: "string"}
-                  - {label: "Period", name: "period", widget: "string"}
-                  - {label: "Description", name: "description", widget: "text"}
-
-          - label: "Projects"
-            name: "projects"
+      - label: "About Page"
+        name: "about"
+        file: "data/pages/about.json"
+        fields:
+          - {label: "Page Title", name: "title", widget: "string", default: "About"}
+          - label: "Bio Paragraphs"
+            name: "bio"
+            widget: "list"
+            field: {label: "Paragraph", name: "paragraph", widget: "text"}
+          - label: "Skills"
+            name: "skills"
+            widget: "list"
+            field: {label: "Skill", name: "skill", widget: "string"}
+          - label: "Experience"
+            name: "experience"
             widget: "list"
             fields:
-              - {label: "ID", name: "id", widget: "string"}
-              - {label: "Title", name: "title", widget: "string"}
-              - {label: "Description", name: "description", widget: "string"}
-              - {label: "Image", name: "image", widget: "image"}
+              - {label: "Role", name: "role", widget: "string"}
+              - {label: "Company", name: "company", widget: "string"}
+              - {label: "Period", name: "period", widget: "string"}
+              - {label: "Description", name: "description", widget: "text"}
 
-          - label: "Photography"
-            name: "photography"
-            widget: "object"
-            fields:
-              - label: "Collections"
-                name: "collections"
-                widget: "list"
-                fields:
-                  - {label: "ID", name: "id", widget: "string"}
-                  - {label: "Title", name: "title", widget: "string"}
-                  - {label: "Description", name: "description", widget: "string"}
-                  - {label: "Image Count", name: "count", widget: "number"}
-                  - {label: "Cover Image", name: "coverImage", widget: "image"}
+  # Projects - Portfolio items collection
+  - name: "projects"
+    label: "Projects"
+    folder: "data/projects"
+    create: true
+    slug: "{{slug}}"
+    fields:
+      - {label: "Title", name: "title", widget: "string"}
+      - {label: "Description", name: "description", widget: "text"}
+      - {label: "Category", name: "category", widget: "select", options: ["Design", "Marketing", "Writing", "Video", "Other"]}
+      - {label: "Featured", name: "featured", widget: "boolean", default: false}
+      - {label: "Cover Image", name: "image", widget: "image"}
+      - label: "Gallery"
+        name: "gallery"
+        widget: "list"
+        required: false
+        field: {label: "Image", name: "image", widget: "image"}
+      - {label: "Client", name: "client", widget: "string", required: false}
+      - {label: "Year", name: "year", widget: "string", required: false}
+      - {label: "Published", name: "published", widget: "boolean", default: true}
+
+  # Photography - Photo collections
+  - name: "photography"
+    label: "Photography"
+    folder: "data/photography"
+    create: true
+    slug: "{{slug}}"
+    fields:
+      - {label: "Collection Title", name: "title", widget: "string"}
+      - {label: "Description", name: "description", widget: "text"}
+      - {label: "Cover Image", name: "coverImage", widget: "image"}
+      - label: "Photos"
+        name: "photos"
+        widget: "list"
+        fields:
+          - {label: "Image", name: "image", widget: "image"}
+          - {label: "Caption", name: "caption", widget: "string", required: false}
+      - {label: "Published", name: "published", widget: "boolean", default: true}
