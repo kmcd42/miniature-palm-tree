@@ -1,8 +1,8 @@
+# Local development backend - no authentication required
 backend:
-  name: git-gateway
-  branch: main
+  name: test-repo
 
-# Enable local development mode
+# Enable local development mode with proxy
 local_backend: true
 
 # Development overrides - use local proxy
