@@ -1,12 +1,36 @@
 import Image from 'next/image'
 import { Metadata } from 'next'
+import fs from 'fs'
+import path from 'path'
 
 export const metadata: Metadata = {
   title: 'About | Kasey McDonnell',
   description: 'Learn more about Kasey McDonnell - designer, writer, photographer, and marketer.',
 }
 
+interface Experience {
+  role: string
+  company: string
+  period: string
+  description: string
+}
+
+interface AboutData {
+  title: string
+  bio: string[]
+  skills: string[]
+  experience: Experience[]
+}
+
+function getAboutData(): AboutData {
+  const filePath = path.join(process.cwd(), 'data', 'pages', 'about.json')
+  const fileContents = fs.readFileSync(filePath, 'utf8')
+  return JSON.parse(fileContents)
+}
+
 export default function AboutPage() {
+  const aboutData = getAboutData()
+
   return (
     <div className="min-h-screen">
       <section className="container mx-auto px-6 py-20">
@@ -18,49 +42,17 @@ export default function AboutPage() {
             </h1>
 
             <div className="space-y-6 text-lg">
-              <p>
-                I am a designer, writer, and marketer who excels at delivering engaging and audience-focused creative.
-              </p>
-
-              <p>
-                For seven years, I have achieved results through high quality design and copy in agency and government settings.
-              </p>
-
-              <p className="font-semibold">
-                My specialty is combining audience-based strategic thinking with any kind of design.
-              </p>
-
-              <p>
-                I'm a keen writer, photographer, videographer, motion designer, and graphic designer. I find the best way to tell a story, then use my skills to tell it well.
-              </p>
-
-              <p>
-                When I'm not designing your next project, I'm writing my climate newsletter:{' '}
-                <a
-                  href="https://threesixtysix.substack.com"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-brand-yellow hover:underline"
-                >
-                  threesixtysix
-                </a>
-                . It's a great way for anyone to understand climate change and why it matters.
-              </p>
+              {aboutData.bio.map((paragraph, index) => (
+                <p key={index} className={index === 2 ? 'font-semibold' : ''}>
+                  {paragraph}
+                </p>
+              ))}
             </div>
 
             <div className="mt-12 space-y-4">
               <h2 className="text-2xl font-serif font-bold mb-4">Skills</h2>
               <div className="grid grid-cols-2 gap-4">
-                {[
-                  'Visual Design',
-                  'Photography',
-                  'Videography',
-                  'Motion Design',
-                  'Copywriting',
-                  'Strategic Thinking',
-                  'Audience Research',
-                  'Project Management',
-                ].map((skill) => (
+                {aboutData.skills.map((skill) => (
                   <div
                     key={skill}
                     className="px-4 py-2 border border-white/20 rounded-lg text-sm hover:border-brand-yellow transition-colors"
@@ -91,28 +83,16 @@ export default function AboutPage() {
         <h2 className="section-title mb-12">Experience</h2>
 
         <div className="space-y-12 max-w-4xl">
-          {/* Add your actual experience here */}
-          <div className="border-l-2 border-brand-yellow pl-6">
-            <div className="flex justify-between items-start mb-2">
-              <h3 className="text-2xl font-serif font-bold">Your Role</h3>
-              <span className="text-gray-400">2020 - Present</span>
+          {aboutData.experience.map((exp, index) => (
+            <div key={index} className={`border-l-2 ${index === 0 ? 'border-brand-yellow' : 'border-white/20'} pl-6`}>
+              <div className="flex justify-between items-start mb-2">
+                <h3 className="text-2xl font-serif font-bold">{exp.role}</h3>
+                <span className="text-gray-400">{exp.period}</span>
+              </div>
+              <p className="text-brand-yellow mb-3">{exp.company}</p>
+              <p className="text-gray-300">{exp.description}</p>
             </div>
-            <p className="text-brand-yellow mb-3">Company Name</p>
-            <p className="text-gray-300">
-              Description of your role and achievements. Replace this with your actual work experience.
-            </p>
-          </div>
-
-          <div className="border-l-2 border-white/20 pl-6">
-            <div className="flex justify-between items-start mb-2">
-              <h3 className="text-2xl font-serif font-bold">Previous Role</h3>
-              <span className="text-gray-400">2018 - 2020</span>
-            </div>
-            <p className="text-brand-yellow mb-3">Previous Company</p>
-            <p className="text-gray-300">
-              Description of your previous role and achievements.
-            </p>
-          </div>
+          ))}
         </div>
       </section>
 
