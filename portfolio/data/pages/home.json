@@ -1,0 +1,10 @@
+{
+  "greeting": "Kia ora, ko Kasey ahau.",
+  "intro": "I am a designer, writer, and marketer who excels at delivering engaging and audience-focused creative solutions.",
+  "heroImage": "/images/hero-image.jpg",
+  "featuredWork": [
+    "bolton-hotel",
+    "karawhiua",
+    "silverstripe"
+  ]
+}
