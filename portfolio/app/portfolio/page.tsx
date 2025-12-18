@@ -1,58 +1,44 @@
 import Image from 'next/image'
+import Link from 'next/link'
 import { Metadata } from 'next'
+import fs from 'fs'
+import path from 'path'
 
 export const metadata: Metadata = {
   title: 'Portfolio | Kasey McDonnell',
   description: 'View my portfolio of design, photography, and creative projects.',
 }
 
-// This would typically come from a CMS or JSON file
-const projects = [
-  {
-    id: 'bolton-hotel',
-    title: 'bolton hotel',
-    description: 'Brand design and visual identity',
-    image: '/images/projects/bolton-hotel.jpg',
-  },
-  {
-    id: 'karawhiua',
-    title: 'karawhiua',
-    description: 'Digital design and user experience',
-    image: '/images/projects/karawhiua.jpg',
-  },
-  {
-    id: 'silverstripe',
-    title: 'silverstripe',
-    description: 'Marketing and visual design',
-    image: '/images/projects/silverstripe.jpg',
-  },
-  {
-    id: 'world-of-wearableart',
-    title: 'world of wearableart',
-    description: 'Campaign design and photography',
-    image: '/images/projects/wearableart.jpg',
-  },
-  {
-    id: 'doctor-who',
-    title: 'doctor who',
-    description: 'Event design and promotion',
-    image: '/images/projects/doctor-who.jpg',
-  },
-  {
-    id: 'nice-little-palaces',
-    title: 'nice little palaces',
-    description: 'Photography and visual storytelling',
-    image: '/images/projects/nice-little-palaces.jpg',
-  },
-  {
-    id: 'project-zero',
-    title: 'project zero',
-    description: 'Brand strategy and design',
-    image: '/images/projects/project-zero.jpg',
-  },
-]
+interface Project {
+  title: string
+  description: string
+  category: string
+  featured: boolean
+  image: string
+  gallery: string[]
+  client: string
+  year: string
+  published: boolean
+}
+
+function getAllProjects(): (Project & { slug: string })[] {
+  const projectsDir = path.join(process.cwd(), 'data', 'projects')
+  const filenames = fs.readdirSync(projectsDir)
+
+  return filenames
+    .filter(filename => filename.endsWith('.json'))
+    .map(filename => {
+      const filePath = path.join(projectsDir, filename)
+      const fileContents = fs.readFileSync(filePath, 'utf8')
+      const project = JSON.parse(fileContents) as Project
+      const slug = filename.replace('.json', '')
+      return { ...project, slug }
+    })
+    .filter(project => project.published)
+}
 
 export default function PortfolioPage() {
+  const projects = getAllProjects()
   return (
     <div className="min-h-screen">
       {/* Header */}
@@ -66,13 +52,14 @@ export default function PortfolioPage() {
       {/* Projects Grid */}
       <section className="container mx-auto px-6 pb-20">
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-1">
-          {projects.map((project, index) => (
-            <div
-              key={project.id}
+          {projects.map((project) => (
+            <Link
+              key={project.slug}
+              href={`/portfolio/${project.slug}`}
               className="group relative aspect-square overflow-hidden cursor-pointer bg-brand-dark"
             >
               <Image
-                src={project.image}
+                src={project.image || '/images/placeholder.jpg'}
                 alt={project.title}
                 fill
                 className="object-cover transition-all duration-500 group-hover:scale-110 group-hover:opacity-50"
@@ -97,7 +84,7 @@ export default function PortfolioPage() {
                   {project.title}
                 </h3>
               </div>
-            </div>
+            </Link>
           ))}
         </div>
       </section>
