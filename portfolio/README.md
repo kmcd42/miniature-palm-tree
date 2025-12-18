@@ -186,23 +186,82 @@ After the initial setup, here's all you need to do:
 
 ---
 
-## Making Changes
+## Content Management with Decap CMS
 
-### Adding Your Images
+### Using the Visual Admin Interface
+
+**The easiest way to edit your content!** No need to edit JSON files or code.
+
+#### Step 1: Start the CMS Backend
+
+Open **two Terminal windows**:
+
+**Terminal 1 - Run the website:**
+```bash
+cd ~/Documents/miniature-palm-tree/portfolio
+npm run dev
+```
+
+**Terminal 2 - Run the CMS backend:**
+```bash
+cd ~/Documents/miniature-palm-tree/portfolio
+npm run cms
+```
+
+You should see:
+```
+🚀 Starting Decap CMS local backend proxy...
+Decap Server listening on port 8081
+```
+
+#### Step 2: Access the Admin Panel
+
+1. Open your browser
+2. Go to: **http://localhost:3000/admin**
+3. You'll see the Decap CMS login screen
+4. Click **"Login"** (no password needed for local development)
+
+#### Step 3: Edit Your Content
+
+You'll see a beautiful admin interface where you can:
+
+- **Site Settings** - Update your email, social links, tagline
+- **Home Page** - Change your greeting and introduction
+- **About** - Edit your bio, skills, and work experience
+- **Projects** - Add/edit/delete projects with images
+- **Photography** - Manage photography collections
+
+**Changes are automatically:**
+- ✅ Saved to your JSON files
+- ✅ Committed to Git
+- ✅ Visible on your website immediately
+
+#### Step 4: Upload Images
+
+- Click any image field in the admin
+- Upload new photos directly
+- They're automatically saved to the correct folder
+- No need to worry about file names or paths
+
+### Manual Editing (Alternative)
+
+If you prefer editing files directly:
+
+#### Adding Images Manually
 
 1. In Finder, navigate to the portfolio folder
 2. Go to `public/images/`
 3. Replace the placeholder images with your photos (keep the same names)
 4. See `public/images/README.md` for the complete list of required images
 
-### Editing Your Content
+#### Editing Content Manually
 
 1. Open the project in a text editor (VS Code recommended, free from https://code.visualstudio.com)
 2. Edit `data/content.json` to update your bio, projects, etc.
 3. Save the file
 4. The website will automatically refresh in your browser (if dev server is running)
 
-### Updating Social Links
+#### Updating Social Links Manually
 
 Edit these files to add your real social media URLs:
 - `app/contact/page.tsx` - lines 53 and 62
