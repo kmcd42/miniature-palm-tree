@@ -1,0 +1,118 @@
+{
+  "site": {
+    "title": "Kasey McDonnell",
+    "tagline": "Designer, Writer, and Marketer",
+    "email": "hello@kaseymcdonnell.co.nz",
+    "social": {
+      "instagram": "https://instagram.com/your-handle",
+      "linkedin": "https://linkedin.com/in/your-profile"
+    }
+  },
+  "home": {
+    "greeting": "Kia ora, ko Kasey ahau.",
+    "intro": "I am a designer, writer, and marketer who excels at delivering engaging and audience-focused creative solutions.",
+    "heroImage": "/images/hero-image.jpg"
+  },
+  "about": {
+    "bio": [
+      "I am a designer, writer, and marketer who excels at delivering engaging and audience-focused creative.",
+      "For seven years, I have achieved results through high quality design and copy in agency and government settings.",
+      "My specialty is combining audience-based strategic thinking with any kind of design.",
+      "I'm a keen writer, photographer, videographer, motion designer, and graphic designer. I find the best way to tell a story, then use my skills to tell it well.",
+      "When I'm not designing your next project, I'm writing my climate newsletter: threesixtysix. It's a great way for anyone to understand climate change and why it matters."
+    ],
+    "skills": [
+      "Visual Design",
+      "Photography",
+      "Videography",
+      "Motion Design",
+      "Copywriting",
+      "Strategic Thinking",
+      "Audience Research",
+      "Project Management"
+    ],
+    "experience": [
+      {
+        "role": "Your Role",
+        "company": "Company Name",
+        "period": "2020 - Present",
+        "description": "Description of your role and achievements. Replace this with your actual work experience."
+      },
+      {
+        "role": "Previous Role",
+        "company": "Previous Company",
+        "period": "2018 - 2020",
+        "description": "Description of your previous role and achievements."
+      }
+    ]
+  },
+  "projects": [
+    {
+      "id": "bolton-hotel",
+      "title": "bolton hotel",
+      "description": "Brand design and visual identity",
+      "image": "/images/projects/bolton-hotel.jpg"
+    },
+    {
+      "id": "karawhiua",
+      "title": "karawhiua",
+      "description": "Digital design and user experience",
+      "image": "/images/projects/karawhiua.jpg"
+    },
+    {
+      "id": "silverstripe",
+      "title": "silverstripe",
+      "description": "Marketing and visual design",
+      "image": "/images/projects/silverstripe.jpg"
+    },
+    {
+      "id": "world-of-wearableart",
+      "title": "world of wearableart",
+      "description": "Campaign design and photography",
+      "image": "/images/projects/wearableart.jpg"
+    },
+    {
+      "id": "doctor-who",
+      "title": "doctor who",
+      "description": "Event design and promotion",
+      "image": "/images/projects/doctor-who.jpg"
+    },
+    {
+      "id": "nice-little-palaces",
+      "title": "nice little palaces",
+      "description": "Photography and visual storytelling",
+      "image": "/images/projects/nice-little-palaces.jpg"
+    },
+    {
+      "id": "project-zero",
+      "title": "project zero",
+      "description": "Brand strategy and design",
+      "image": "/images/projects/project-zero.jpg"
+    }
+  ],
+  "photography": {
+    "collections": [
+      {
+        "id": "abstract",
+        "title": "abstract photography",
+        "description": "Experimental and abstract visual exploration",
+        "count": 12,
+        "coverImage": "/images/photography/abstract-cover.jpg"
+      },
+      {
+        "id": "urban",
+        "title": "urban landscapes",
+        "description": "Cityscapes and architectural photography",
+        "count": 18,
+        "coverImage": "/images/photography/urban-cover.jpg"
+      },
+      {
+        "id": "documentary",
+        "title": "documentary",
+        "description": "Social and documentary photography projects",
+        "count": 24,
+        "coverImage": "/images/photography/documentary-cover.jpg"
+      }
+    ]
+  }
+}
