@@ -75,6 +75,8 @@ collections:
     folder: "data/custom-pages"
     create: true
     slug: "{{slug}}"
+    extension: "json"
+    format: "json"
     fields:
       - {label: "Page Title", name: "title", widget: "string"}
       - {label: "URL Slug", name: "slug", widget: "string", hint: "The URL path for this page (e.g., 'services' creates /pages/services)"}
@@ -89,6 +91,8 @@ collections:
     folder: "data/projects"
     create: true
     slug: "{{slug}}"
+    extension: "json"
+    format: "json"
     fields:
       - {label: "Title", name: "title", widget: "string"}
       - {label: "Description", name: "description", widget: "text"}
@@ -110,6 +114,8 @@ collections:
     folder: "data/photography"
     create: true
     slug: "{{slug}}"
+    extension: "json"
+    format: "json"
     fields:
       - {label: "Collection Title", name: "title", widget: "string"}
       - {label: "Description", name: "description", widget: "text"}
