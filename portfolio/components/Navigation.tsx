@@ -11,7 +11,6 @@ export default function Navigation() {
     { href: '/about', label: 'about' },
     { href: '/portfolio', label: 'portfolio' },
     { href: '/photography', label: 'photography' },
-    { href: '/newsletter', label: 'newsletter' },
   ]
 
   return (
@@ -31,6 +30,14 @@ export default function Navigation() {
                 {link.label}
               </Link>
             ))}
+            <a
+              href="https://threesixtysix.news"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm font-sans transition-colors hover:text-brand-yellow text-white"
+            >
+              newsletter
+            </a>
           </div>
 
           {/* Center logo */}

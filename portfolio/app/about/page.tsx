@@ -2,6 +2,7 @@ import Image from 'next/image'
 import { Metadata } from 'next'
 import fs from 'fs'
 import path from 'path'
+import ReactMarkdown from 'react-markdown'
 
 export const metadata: Metadata = {
   title: 'About | Kasey McDonnell',
@@ -90,7 +91,9 @@ export default function AboutPage() {
                 <span className="text-gray-400">{exp.period}</span>
               </div>
               <p className="text-brand-yellow mb-3">{exp.company}</p>
-              <p className="text-gray-300">{exp.description}</p>
+              <div className="text-gray-300 prose prose-invert prose-sm max-w-none">
+                <ReactMarkdown>{exp.description}</ReactMarkdown>
+              </div>
             </div>
           ))}
         </div>
