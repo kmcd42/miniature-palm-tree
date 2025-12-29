@@ -8,11 +8,14 @@ export type Frequency = 'weekly' | 'fortnightly' | 'monthly' | 'yearly';
 export interface BudgetItem {
   id: string;
   name: string;
-  amount: number; // Amount in the specified frequency
+  amount: number; // Amount in the specified frequency (ignored if isAutoCalculated)
   frequency: Frequency;
   category: BudgetCategory;
+  isAutoCalculated?: boolean; // If true, amount is sum of children
   isSubscription?: boolean; // For regular expenses tracking
   parentId?: string; // For sub-items
+  linkedToId?: string; // Links to investment/savings bucket ID (auto-synced)
+  linkedToType?: 'investment' | 'savings_bucket'; // Type of linked item
   notes?: string;
   createdAt: number;
   updatedAt: number;
@@ -35,8 +38,10 @@ export interface SavingsBucket {
   name: string;
   targetAmount: number;
   currentAmount: number; // Manually updated
+  currentAmountUpdatedAt: number; // When currentAmount was last updated
   weeklyContribution: number;
-  budgetItemId?: string; // Links to budget item
+  expectedReturnRate?: number; // Annual % for interest-bearing accounts
+  budgetItemId?: string; // Links to budget item (auto-created)
   targetDate?: number; // Optional deadline
   notes?: string;
   createdAt: number;
@@ -49,10 +54,11 @@ export interface Investment {
   name: string;
   type: 'etf' | 'kiwisaver' | 'other';
   currentValue: number; // Manually updated periodically
+  currentValueUpdatedAt: number; // When currentValue was last updated
   weeklyContribution: number;
   expectedReturnRate: number; // Annual % (e.g., 7 for 7%)
   feeRate?: number; // Annual % fees
-  budgetItemId?: string;
+  budgetItemId?: string; // Links to budget item (auto-created)
   notes?: string;
   createdAt: number;
   updatedAt: number;
@@ -63,13 +69,37 @@ export interface Mortgage {
   id: string;
   name: string;
   principal: number; // Current principal
+  principalUpdatedAt: number; // When principal was last updated
   originalPrincipal: number;
+  propertyValue?: number; // Current property value (CV)
   interestRate: number; // Annual %
   weeklyPayment: number;
   extraWeeklyPayment: number; // Additional payments
   startDate: number;
   termYears: number;
   notes?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+// House expense item for shared housing
+export interface HouseExpense {
+  id: string;
+  name: string;
+  amount: number;
+  frequency: Frequency;
+  category: 'mortgage' | 'rates' | 'body_corporate' | 'utilities' | 'insurance' | 'food' | 'other';
+  notes?: string;
+}
+
+// Shared housing configuration
+export interface SharedHousing {
+  enabled: boolean;
+  partnerName: string;
+  partnerWeeklyIncome: number;
+  expenses: HouseExpense[];
+  // Calculated: what % of combined income goes to housing
+  // Your share = (yourIncome / totalIncome) * totalExpenses
   createdAt: number;
   updatedAt: number;
 }
@@ -84,6 +114,7 @@ export interface Goal {
   type: GoalType;
   targetAmount: number;
   currentAmount: number;
+  currentAmountUpdatedAt?: number; // When currentAmount was last updated
   targetDate?: number; // For time-specific goals
   monthsOfExpenses?: number; // For emergency fund (e.g., 6 months)
   notes?: string;
@@ -112,6 +143,7 @@ export interface BudgetStore {
   investments: Investment[];
   mortgages: Mortgage[];
   goals: Goal[];
+  sharedHousing?: SharedHousing;
 }
 
 // Default settings for new users
@@ -134,4 +166,5 @@ export const INITIAL_STORE: BudgetStore = {
   investments: [],
   mortgages: [],
   goals: [],
+  sharedHousing: undefined,
 };

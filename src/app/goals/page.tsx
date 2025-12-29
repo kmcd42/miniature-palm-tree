@@ -492,7 +492,7 @@ function BucketSheet({
   isOpen: boolean;
   onClose: () => void;
   bucket: SavingsBucket | null;
-  onSave: (data: Omit<SavingsBucket, 'id' | 'createdAt' | 'updatedAt'>) => void;
+  onSave: (data: Omit<SavingsBucket, 'id' | 'createdAt' | 'updatedAt' | 'currentAmountUpdatedAt'>) => void;
   onDelete?: () => void;
 }) {
   const [name, setName] = useState(bucket?.name || '');

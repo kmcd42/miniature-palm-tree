@@ -2,16 +2,16 @@
 
 import React, { useState } from 'react';
 import TabBar from '@/components/TabBar';
-import GlassCard, { CardHeader, CategoryBadge, ProgressBar } from '@/components/GlassCard';
+import GlassCard, { CategoryBadge } from '@/components/GlassCard';
 import BottomSheet from '@/components/BottomSheet';
+import { BudgetStackedBar } from '@/components/Charts';
 import { useBudget } from '@/lib/context';
 import { BudgetItem, BudgetCategory, Frequency } from '@/types/budget';
 import {
   formatCurrency,
   toWeekly,
-  fromWeekly,
-  calculateWeeklyByCategory,
-  calculateUncommittedIncome,
+  getEffectiveWeeklyAmount,
+  calculateWeeklyByCategoryEffective,
 } from '@/lib/calculations';
 
 export default function BudgetPage() {
@@ -30,22 +30,73 @@ export default function BudgetPage() {
     );
   }
 
-  const { settings, budgetItems } = store;
+  const { settings, budgetItems, investments, savingsBuckets } = store;
 
-  // Filter and group items
+  // Build effective budget items list including linked investments/savings
+  const linkedBudgetItems: BudgetItem[] = [
+    ...investments
+      .filter((inv) => inv.weeklyContribution > 0)
+      .map((inv) => ({
+        id: `linked-inv-${inv.id}`,
+        name: inv.name,
+        amount: inv.weeklyContribution,
+        frequency: 'weekly' as Frequency,
+        category: 'savings' as BudgetCategory,
+        linkedToId: inv.id,
+        linkedToType: 'investment' as const,
+        createdAt: inv.createdAt,
+        updatedAt: inv.updatedAt,
+      })),
+    ...savingsBuckets
+      .filter((b) => b.weeklyContribution > 0)
+      .map((b) => ({
+        id: `linked-bucket-${b.id}`,
+        name: b.name,
+        amount: b.weeklyContribution,
+        frequency: 'weekly' as Frequency,
+        category: 'savings' as BudgetCategory,
+        linkedToId: b.id,
+        linkedToType: 'savings_bucket' as const,
+        createdAt: b.createdAt,
+        updatedAt: b.updatedAt,
+      })),
+  ];
+
+  // Combine manual items with linked items (exclude duplicates)
+  const manualItemIds = new Set(budgetItems.filter(i => i.linkedToId).map(i => i.linkedToId));
+  const effectiveLinkedItems = linkedBudgetItems.filter(
+    (li) => !manualItemIds.has(li.linkedToId)
+  );
+
+  const allBudgetItems = [...budgetItems, ...effectiveLinkedItems];
+
+  // Filter items
   const filteredItems = filter === 'all'
-    ? budgetItems
-    : budgetItems.filter((item) => item.category === filter);
+    ? allBudgetItems
+    : allBudgetItems.filter((item) => item.category === filter);
 
   // Group by parent (for sub-items)
   const parentItems = filteredItems.filter((item) => !item.parentId);
   const childItems = filteredItems.filter((item) => item.parentId);
 
-  // Calculate totals
-  const weeklyByCategory = calculateWeeklyByCategory(budgetItems);
-  const uncommitted = calculateUncommittedIncome(settings.afterTaxWeeklyIncome, budgetItems);
+  // Calculate totals using effective calculation (respects parent auto-sum)
+  const weeklyByCategory = calculateWeeklyByCategoryEffective(allBudgetItems);
+  const totalWeeklyCommitted = weeklyByCategory.necessity + weeklyByCategory.cost + weeklyByCategory.savings;
+  const uncommitted = settings.afterTaxWeeklyIncome - totalWeeklyCommitted;
+
+  // Prepare data for stacked bar chart (only top-level items)
+  const barChartData = parentItems.map((item) => ({
+    id: item.id,
+    name: item.name,
+    amount: getEffectiveWeeklyAmount(item, allBudgetItems),
+    category: item.category,
+  }));
 
   const handleDelete = (id: string) => {
+    if (id.startsWith('linked-')) {
+      alert('This item is synced from Wealth. Edit it there.');
+      return;
+    }
     if (confirm('Delete this budget item?')) {
       dispatch({ type: 'DELETE_BUDGET_ITEM', payload: id });
     }
@@ -59,6 +110,17 @@ export default function BudgetPage() {
           <h1 className="text-2xl font-bold text-white">Budget</h1>
           <p className="text-white/70 text-sm">Weekly spending plan</p>
         </header>
+
+        {/* Stacked Bar Chart */}
+        {settings.afterTaxWeeklyIncome > 0 && barChartData.length > 0 && (
+          <GlassCard className="mb-4">
+            <BudgetStackedBar
+              items={barChartData}
+              totalIncome={settings.afterTaxWeeklyIncome}
+              height={24}
+            />
+          </GlassCard>
+        )}
 
         {/* Summary Card */}
         <GlassCard className="mb-6">
@@ -120,25 +182,50 @@ export default function BudgetPage() {
             </GlassCard>
           ) : (
             parentItems.map((item) => {
-              const weeklyAmount = toWeekly(item.amount, item.frequency);
               const itemChildren = childItems.filter((c) => c.parentId === item.id);
+              const isParent = itemChildren.length > 0;
+              const weeklyAmount = getEffectiveWeeklyAmount(item, allBudgetItems);
+              const isLinked = item.id.startsWith('linked-');
 
               return (
                 <GlassCard
                   key={item.id}
-                  onClick={() => setEditingItem(item)}
+                  onClick={() => {
+                    if (isLinked) {
+                      alert('This item is synced from Wealth/Goals. Edit it there.');
+                    } else {
+                      setEditingItem(item);
+                    }
+                  }}
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
                         <h3 className="font-semibold text-gray-900 dark:text-white">
                           {item.name}
                         </h3>
                         <CategoryBadge category={item.category} />
+                        {isParent && (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-ios-blue/10 text-ios-blue">
+                            Auto
+                          </span>
+                        )}
+                        {isLinked && (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-ios-purple/10 text-ios-purple">
+                            Synced
+                          </span>
+                        )}
                       </div>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">
-                        {formatCurrency(item.amount)}/{item.frequency}
-                      </p>
+                      {!isParent && (
+                        <p className="text-sm text-gray-500 dark:text-gray-400">
+                          {formatCurrency(item.amount)}/{item.frequency}
+                        </p>
+                      )}
+                      {isParent && (
+                        <p className="text-sm text-gray-500 dark:text-gray-400">
+                          {itemChildren.length} item{itemChildren.length !== 1 ? 's' : ''} combined
+                        </p>
+                      )}
                     </div>
                     <div className="text-right">
                       <p className="font-bold text-lg money-display">
@@ -152,7 +239,16 @@ export default function BudgetPage() {
                   {itemChildren.length > 0 && (
                     <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700 space-y-2">
                       {itemChildren.map((child) => (
-                        <div key={child.id} className="flex justify-between text-sm pl-4 border-l-2 border-gray-300 dark:border-gray-600">
+                        <div
+                          key={child.id}
+                          className="flex justify-between text-sm pl-4 border-l-2 border-gray-300 dark:border-gray-600 cursor-pointer hover:bg-white/10 -mx-1 px-1 py-1 rounded"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (!child.id.startsWith('linked-')) {
+                              setEditingItem(child);
+                            }
+                          }}
+                        >
                           <span className="text-gray-600 dark:text-gray-300">{child.name}</span>
                           <span className="money-display">{formatCurrency(toWeekly(child.amount, child.frequency))}</span>
                         </div>
@@ -192,7 +288,7 @@ export default function BudgetPage() {
           setEditingItem(null);
         }}
         item={editingItem}
-        parentItems={parentItems}
+        parentItems={budgetItems.filter((i) => !i.parentId && !i.linkedToId)}
         onSave={(data) => {
           if (editingItem) {
             dispatch({
@@ -205,7 +301,7 @@ export default function BudgetPage() {
           setShowAddSheet(false);
           setEditingItem(null);
         }}
-        onDelete={editingItem ? () => {
+        onDelete={editingItem && !editingItem.id.startsWith('linked-') ? () => {
           handleDelete(editingItem.id);
           setEditingItem(null);
         } : undefined}
@@ -249,11 +345,13 @@ function BudgetItemSheet({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !amount) return;
+    if (!name) return;
+    // Amount is optional for parent items (will be auto-calculated)
+    const amountValue = parseFloat(amount) || 0;
 
     onSave({
       name,
-      amount: parseFloat(amount),
+      amount: amountValue,
       frequency,
       category,
       parentId: parentId || undefined,
@@ -276,7 +374,7 @@ function BudgetItemSheet({
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="e.g., Groceries, Rent, ETF Savings"
+            placeholder="e.g., Groceries, Rent, Subscriptions"
             className="ios-input"
             required
           />
@@ -295,8 +393,10 @@ function BudgetItemSheet({
               step="0.01"
               min="0"
               className="ios-input"
-              required
             />
+            <p className="text-xs text-gray-500 mt-1">
+              Leave 0 for parent items
+            </p>
           </div>
 
           <div>
@@ -345,7 +445,7 @@ function BudgetItemSheet({
         {parentItems.length > 0 && (
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Parent Item (optional)
+              Parent Item (optional - for grouping)
             </label>
             <select
               value={parentId}
@@ -359,6 +459,9 @@ function BudgetItemSheet({
                 </option>
               ))}
             </select>
+            <p className="text-xs text-gray-500 mt-1">
+              Parent items auto-calculate their total from children
+            </p>
           </div>
         )}
 
