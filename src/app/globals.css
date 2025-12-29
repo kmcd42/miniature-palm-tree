@@ -1,0 +1,323 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --glass-bg: rgba(255, 255, 255, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.5);
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+  --glass-blur: 20px;
+
+  /* iOS-inspired semantic colors */
+  --color-primary: #007AFF;
+  --color-success: #34C759;
+  --color-warning: #FF9500;
+  --color-danger: #FF3B30;
+
+  /* Category colors */
+  --color-necessity: #FF3B30;
+  --color-cost: #FF9500;
+  --color-savings: #34C759;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --glass-bg: rgba(28, 28, 30, 0.72);
+    --glass-border: rgba(255, 255, 255, 0.1);
+    --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display',
+    'Helvetica Neue', Arial, sans-serif;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+  min-height: 100vh;
+  min-height: 100dvh;
+  position: relative;
+}
+
+/* Film grain texture overlay */
+body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 9999;
+  opacity: 0.03;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+}
+
+/* Animated subtle texture shimmer */
+body::after {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 9998;
+  opacity: 0.015;
+  background:
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(255, 255, 255, 0.03) 2px,
+      rgba(255, 255, 255, 0.03) 4px
+    );
+}
+
+/* Liquid Glass effect base class */
+@layer components {
+  .glass {
+    background: var(--glass-bg);
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+  }
+
+  .glass-card {
+    @apply glass rounded-ios-xl p-4;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .glass-card:active {
+    transform: scale(0.98);
+  }
+
+  .glass-card-interactive:hover {
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
+  }
+
+  /* Bento grid layouts */
+  .bento-grid {
+    display: grid;
+    gap: 16px;
+    grid-template-columns: 1fr;
+  }
+
+  @media (min-width: 640px) {
+    .bento-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .bento-grid {
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+    }
+  }
+
+  @media (min-width: 1280px) {
+    .bento-grid {
+      grid-template-columns: repeat(4, 1fr);
+    }
+  }
+
+  /* Span classes for bento variety */
+  .bento-wide {
+    @media (min-width: 640px) {
+      grid-column: span 2;
+    }
+  }
+
+  .bento-tall {
+    @media (min-width: 640px) {
+      grid-row: span 2;
+    }
+  }
+
+  .bento-large {
+    @media (min-width: 640px) {
+      grid-column: span 2;
+      grid-row: span 2;
+    }
+  }
+
+  /* iOS-style inputs */
+  .ios-input {
+    @apply w-full px-4 py-3 rounded-ios text-base;
+    background: rgba(255, 255, 255, 0.9);
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+
+  .ios-input:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.15);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .ios-input {
+      background: rgba(58, 58, 60, 0.9);
+      border-color: rgba(255, 255, 255, 0.1);
+      color: white;
+    }
+  }
+
+  /* iOS-style buttons */
+  .ios-button {
+    @apply px-6 py-3 rounded-ios font-semibold text-base;
+    background: var(--color-primary);
+    color: white;
+    transition: transform 0.1s, opacity 0.1s;
+  }
+
+  .ios-button:active {
+    transform: scale(0.96);
+    opacity: 0.9;
+  }
+
+  .ios-button-secondary {
+    @apply ios-button;
+    background: rgba(0, 122, 255, 0.15);
+    color: var(--color-primary);
+  }
+
+  /* Category badges */
+  .badge-necessity {
+    background: rgba(255, 59, 48, 0.15);
+    color: var(--color-necessity);
+  }
+
+  .badge-cost {
+    background: rgba(255, 149, 0, 0.15);
+    color: var(--color-cost);
+  }
+
+  .badge-savings {
+    background: rgba(52, 199, 89, 0.15);
+    color: var(--color-savings);
+  }
+
+  /* Progress bars */
+  .progress-bar {
+    @apply w-full h-2 rounded-full overflow-hidden;
+    background: rgba(0, 0, 0, 0.1);
+  }
+
+  .progress-bar-fill {
+    @apply h-full rounded-full transition-all duration-500;
+  }
+
+  /* Safe area padding for iOS */
+  .safe-bottom {
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+  }
+
+  .safe-top {
+    padding-top: max(16px, env(safe-area-inset-top));
+  }
+
+  /* Tab bar styles */
+  .tab-bar {
+    @apply fixed bottom-0 left-0 right-0 glass safe-bottom;
+    border-top: 1px solid var(--glass-border);
+  }
+
+  .tab-item {
+    @apply flex flex-col items-center justify-center py-2 px-4;
+    color: rgba(0, 0, 0, 0.4);
+    transition: color 0.2s;
+  }
+
+  .tab-item.active {
+    color: var(--color-primary);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .tab-item {
+      color: rgba(255, 255, 255, 0.4);
+    }
+  }
+
+  /* Number displays */
+  .money-display {
+    font-feature-settings: 'tnum' 1;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Shimmer loading effect */
+  .shimmer {
+    background: linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0) 0%,
+      rgba(255, 255, 255, 0.3) 50%,
+      rgba(255, 255, 255, 0) 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+
+  /* Modal/Sheet styles */
+  .modal-backdrop {
+    @apply fixed inset-0 z-40;
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(4px);
+  }
+
+  .bottom-sheet {
+    @apply fixed bottom-0 left-0 right-0 z-50 glass rounded-t-3xl safe-bottom;
+    max-height: 90vh;
+    max-height: 90dvh;
+  }
+
+  .sheet-handle {
+    @apply w-10 h-1 rounded-full mx-auto my-3;
+    background: rgba(0, 0, 0, 0.2);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .sheet-handle {
+      background: rgba(255, 255, 255, 0.3);
+    }
+  }
+}
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Hide scrollbar but keep functionality */
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Selection color */
+::selection {
+  background: rgba(0, 122, 255, 0.3);
+}
+
+/* Focus visible for accessibility */
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}

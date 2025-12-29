@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#667eea"/>
+      <stop offset="50%" style="stop-color:#764ba2"/>
+      <stop offset="100%" style="stop-color:#f093fb"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="108" fill="url(#bg)"/>
+  <g fill="white" fill-opacity="0.95">
+    <!-- Dollar sign stylized as chart bars -->
+    <rect x="156" y="280" width="50" height="120" rx="8"/>
+    <rect x="231" y="200" width="50" height="200" rx="8"/>
+    <rect x="306" y="140" width="50" height="260" rx="8"/>
+    <!-- Trend line -->
+    <path d="M156 260 L231 180 L306 120 L380 80" stroke="white" stroke-width="12" stroke-linecap="round" fill="none"/>
+    <!-- Arrow head -->
+    <polygon points="380,80 350,95 365,110" fill="white"/>
+  </g>
+</svg>
