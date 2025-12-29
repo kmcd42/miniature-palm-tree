@@ -15,7 +15,7 @@ export interface BudgetItem {
   isSubscription?: boolean; // For regular expenses tracking
   parentId?: string; // For sub-items
   linkedToId?: string; // Links to investment/savings bucket ID (auto-synced)
-  linkedToType?: 'investment' | 'savings_bucket'; // Type of linked item
+  linkedToType?: 'investment' | 'savings_bucket' | 'housing' | 'mortgage' | 'housing_expense'; // Type of linked item
   notes?: string;
   createdAt: number;
   updatedAt: number;
