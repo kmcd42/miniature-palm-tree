@@ -1,4 +1,4 @@
-import { BudgetItem, Investment, Mortgage, Frequency, BudgetCategory } from '@/types/budget';
+import { BudgetItem, Investment, Mortgage, Frequency, BudgetCategory, SavingsBucket, SharedHousing, HouseExpense } from '@/types/budget';
 
 // Convert any frequency to weekly amount
 export function toWeekly(amount: number, frequency: Frequency): number {
@@ -343,4 +343,312 @@ export function formatCurrency(amount: number, showCents: boolean = true): strin
 // Format percentage
 export function formatPercent(value: number, decimals: number = 1): string {
   return `${value.toFixed(decimals)}%`;
+}
+
+// Calculate the effective weekly amount for a budget item
+// If the item has children, sum their weekly amounts instead of using its own
+export function getEffectiveWeeklyAmount(
+  item: BudgetItem,
+  allItems: BudgetItem[]
+): number {
+  const children = allItems.filter((i) => i.parentId === item.id);
+
+  if (children.length > 0) {
+    // This is a parent - sum children's weekly amounts
+    return children.reduce((sum, child) => {
+      return sum + getEffectiveWeeklyAmount(child, allItems);
+    }, 0);
+  }
+
+  // No children - use own amount
+  return toWeekly(item.amount, item.frequency);
+}
+
+// Check if an item has children (is a parent)
+export function hasChildren(itemId: string, allItems: BudgetItem[]): boolean {
+  return allItems.some((i) => i.parentId === itemId);
+}
+
+// Calculate weekly totals by category, respecting parent auto-calculation
+export function calculateWeeklyByCategoryEffective(
+  items: BudgetItem[]
+): Record<BudgetCategory, number> {
+  const result: Record<BudgetCategory, number> = {
+    necessity: 0,
+    cost: 0,
+    savings: 0,
+  };
+
+  // Only count top-level items (no parentId) to avoid double-counting
+  const topLevelItems = items.filter((item) => !item.parentId);
+
+  for (const item of topLevelItems) {
+    const weekly = getEffectiveWeeklyAmount(item, items);
+    result[item.category] += weekly;
+  }
+
+  return result;
+}
+
+// Project investment value since last update
+export function projectCurrentInvestmentValue(investment: Investment): {
+  projectedValue: number;
+  weeksSinceUpdate: number;
+  contributionsSinceUpdate: number;
+  growthSinceUpdate: number;
+} {
+  const now = Date.now();
+  const lastUpdate = investment.currentValueUpdatedAt || investment.createdAt;
+  const msPerWeek = 7 * 24 * 60 * 60 * 1000;
+  const weeksSinceUpdate = (now - lastUpdate) / msPerWeek;
+
+  // Contributions since last update
+  const contributionsSinceUpdate = investment.weeklyContribution * weeksSinceUpdate;
+
+  // Growth on existing balance
+  const weeklyRate = Math.pow(1 + investment.expectedReturnRate / 100, 1 / 52) - 1;
+  const netWeeklyRate = weeklyRate - Math.pow(1 + (investment.feeRate || 0) / 100, 1 / 52) + 1;
+  const growthMultiplier = Math.pow(1 + netWeeklyRate, weeksSinceUpdate);
+
+  // Project value: (existing * growth) + FV of contributions
+  const existingWithGrowth = investment.currentValue * growthMultiplier;
+  const contributionsWithGrowth = netWeeklyRate > 0
+    ? investment.weeklyContribution * ((growthMultiplier - 1) / netWeeklyRate)
+    : contributionsSinceUpdate;
+
+  const projectedValue = existingWithGrowth + contributionsWithGrowth;
+  const growthSinceUpdate = projectedValue - investment.currentValue - contributionsSinceUpdate;
+
+  return {
+    projectedValue,
+    weeksSinceUpdate,
+    contributionsSinceUpdate,
+    growthSinceUpdate,
+  };
+}
+
+// Project savings bucket value since last update
+export function projectCurrentSavingsValue(bucket: SavingsBucket): {
+  projectedValue: number;
+  weeksSinceUpdate: number;
+  contributionsSinceUpdate: number;
+  interestSinceUpdate: number;
+} {
+  const now = Date.now();
+  const lastUpdate = bucket.currentAmountUpdatedAt || bucket.createdAt;
+  const msPerWeek = 7 * 24 * 60 * 60 * 1000;
+  const weeksSinceUpdate = (now - lastUpdate) / msPerWeek;
+
+  const contributionsSinceUpdate = bucket.weeklyContribution * weeksSinceUpdate;
+
+  if (!bucket.expectedReturnRate || bucket.expectedReturnRate === 0) {
+    return {
+      projectedValue: bucket.currentAmount + contributionsSinceUpdate,
+      weeksSinceUpdate,
+      contributionsSinceUpdate,
+      interestSinceUpdate: 0,
+    };
+  }
+
+  const weeklyRate = Math.pow(1 + bucket.expectedReturnRate / 100, 1 / 52) - 1;
+  const growthMultiplier = Math.pow(1 + weeklyRate, weeksSinceUpdate);
+
+  const existingWithInterest = bucket.currentAmount * growthMultiplier;
+  const contributionsWithInterest = weeklyRate > 0
+    ? bucket.weeklyContribution * ((growthMultiplier - 1) / weeklyRate)
+    : contributionsSinceUpdate;
+
+  const projectedValue = existingWithInterest + contributionsWithInterest;
+  const interestSinceUpdate = projectedValue - bucket.currentAmount - contributionsSinceUpdate;
+
+  return {
+    projectedValue,
+    weeksSinceUpdate,
+    contributionsSinceUpdate,
+    interestSinceUpdate,
+  };
+}
+
+// Project mortgage balance since last update
+export function projectCurrentMortgageBalance(mortgage: Mortgage): {
+  projectedBalance: number;
+  weeksSinceUpdate: number;
+  principalPaidSinceUpdate: number;
+  interestPaidSinceUpdate: number;
+} {
+  const now = Date.now();
+  const lastUpdate = mortgage.principalUpdatedAt || mortgage.createdAt;
+  const msPerWeek = 7 * 24 * 60 * 60 * 1000;
+  const weeksSinceUpdate = (now - lastUpdate) / msPerWeek;
+
+  const weeklyPayment = mortgage.weeklyPayment + mortgage.extraWeeklyPayment;
+  const monthlyPayment = (weeklyPayment * 52) / 12;
+  const monthlyRate = mortgage.interestRate / 100 / 12;
+
+  const monthsSinceUpdate = weeksSinceUpdate / (52 / 12);
+  const fullMonths = Math.floor(monthsSinceUpdate);
+
+  let balance = mortgage.principal;
+  let totalInterest = 0;
+  let totalPrincipal = 0;
+
+  for (let m = 0; m < fullMonths && balance > 0; m++) {
+    const interestThisMonth = balance * monthlyRate;
+    totalInterest += interestThisMonth;
+    const principalThisMonth = Math.min(monthlyPayment - interestThisMonth, balance);
+    totalPrincipal += principalThisMonth;
+    balance -= principalThisMonth;
+  }
+
+  return {
+    projectedBalance: Math.max(0, balance),
+    weeksSinceUpdate,
+    principalPaidSinceUpdate: totalPrincipal,
+    interestPaidSinceUpdate: totalInterest,
+  };
+}
+
+// Calculate shared housing expenses
+export function calculateSharedHousing(
+  housing: SharedHousing,
+  yourWeeklyIncome: number
+): {
+  totalWeeklyExpenses: number;
+  combinedWeeklyIncome: number;
+  percentageOfIncome: number;
+  yourShare: number;
+  partnerShare: number;
+  yourExpenses: { name: string; amount: number; category: string }[];
+} {
+  // Calculate total weekly expenses
+  const totalWeeklyExpenses = housing.expenses.reduce((sum, exp) => {
+    return sum + toWeekly(exp.amount, exp.frequency);
+  }, 0);
+
+  const combinedWeeklyIncome = yourWeeklyIncome + housing.partnerWeeklyIncome;
+
+  // Percentage of combined income needed for housing
+  const percentageOfIncome = combinedWeeklyIncome > 0
+    ? (totalWeeklyExpenses / combinedWeeklyIncome) * 100
+    : 0;
+
+  // Your share based on income proportion
+  const yourIncomeRatio = combinedWeeklyIncome > 0
+    ? yourWeeklyIncome / combinedWeeklyIncome
+    : 0.5;
+
+  const yourShare = totalWeeklyExpenses * yourIncomeRatio;
+  const partnerShare = totalWeeklyExpenses * (1 - yourIncomeRatio);
+
+  // Break down your share by expense
+  const yourExpenses = housing.expenses.map((exp) => {
+    const weeklyAmount = toWeekly(exp.amount, exp.frequency);
+    return {
+      name: exp.name,
+      amount: weeklyAmount * yourIncomeRatio,
+      category: exp.category,
+    };
+  });
+
+  return {
+    totalWeeklyExpenses,
+    combinedWeeklyIncome,
+    percentageOfIncome,
+    yourShare,
+    partnerShare,
+    yourExpenses,
+  };
+}
+
+// Generate wealth projection data points for graphing
+export function generateWealthProjection(
+  currentAge: number,
+  retirementAge: number,
+  investments: Investment[],
+  mortgages: Mortgage[],
+  propertyValue: number,
+  inflationRate: number
+): { age: number; investments: number; property: number; debt: number; netWealth: number }[] {
+  const dataPoints: { age: number; investments: number; property: number; debt: number; netWealth: number }[] = [];
+
+  // Current state
+  const currentInvestments = investments.reduce((sum, inv) => sum + inv.currentValue, 0);
+  const currentDebt = mortgages.reduce((sum, m) => sum + m.principal, 0);
+
+  dataPoints.push({
+    age: currentAge,
+    investments: currentInvestments,
+    property: propertyValue,
+    debt: currentDebt,
+    netWealth: currentInvestments + propertyValue - currentDebt,
+  });
+
+  // Generate yearly projections
+  for (let age = currentAge + 1; age <= retirementAge; age++) {
+    const years = age - currentAge;
+
+    // Project investments
+    let projectedInvestments = 0;
+    for (const inv of investments) {
+      const projection = projectInvestment(inv, years, inflationRate);
+      projectedInvestments += projection.real; // Use real value
+    }
+
+    // Project mortgage (assume property value grows with inflation)
+    const projectedPropertyValue = propertyValue * Math.pow(1 + inflationRate / 100, years);
+
+    // Calculate remaining debt
+    let remainingDebt = 0;
+    for (const mortgage of mortgages) {
+      const payoff = calculateMortgagePayoff(mortgage);
+      const yearsToPayoff = payoff.monthsRemaining / 12;
+
+      if (yearsToPayoff > years) {
+        // Calculate remaining balance at this point
+        const monthlyRate = mortgage.interestRate / 100 / 12;
+        const monthsFromNow = years * 12;
+        const weeklyPayment = mortgage.weeklyPayment + mortgage.extraWeeklyPayment;
+        const monthlyPayment = (weeklyPayment * 52) / 12;
+
+        let balance = mortgage.principal;
+        for (let m = 0; m < monthsFromNow && balance > 0; m++) {
+          const interest = balance * monthlyRate;
+          balance = balance + interest - monthlyPayment;
+        }
+        remainingDebt += Math.max(0, balance);
+      }
+    }
+
+    // Adjust debt for inflation (real terms)
+    const realDebt = adjustForInflation(remainingDebt, inflationRate / 100, years);
+
+    dataPoints.push({
+      age,
+      investments: projectedInvestments,
+      property: projectedPropertyValue / Math.pow(1 + inflationRate / 100, years), // Real property value
+      debt: realDebt,
+      netWealth: projectedInvestments + projectedPropertyValue / Math.pow(1 + inflationRate / 100, years) - realDebt,
+    });
+  }
+
+  return dataPoints;
+}
+
+// Format relative time (e.g., "2 weeks ago")
+export function formatRelativeTime(timestamp: number): string {
+  const now = Date.now();
+  const diff = now - timestamp;
+
+  const minutes = Math.floor(diff / (1000 * 60));
+  const hours = Math.floor(diff / (1000 * 60 * 60));
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  const weeks = Math.floor(days / 7);
+  const months = Math.floor(days / 30);
+
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  if (days < 7) return `${days}d ago`;
+  if (weeks < 4) return `${weeks}w ago`;
+  return `${months}mo ago`;
 }
