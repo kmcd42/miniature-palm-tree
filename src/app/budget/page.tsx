@@ -12,6 +12,7 @@ import {
   toWeekly,
   getEffectiveWeeklyAmount,
   calculateWeeklyByCategoryEffective,
+  calculateSharedHousing,
 } from '@/lib/calculations';
 
 export default function BudgetPage() {
@@ -19,6 +20,7 @@ export default function BudgetPage() {
   const [showAddSheet, setShowAddSheet] = useState(false);
   const [editingItem, setEditingItem] = useState<BudgetItem | null>(null);
   const [filter, setFilter] = useState<BudgetCategory | 'all'>('all');
+  const [collapsedItems, setCollapsedItems] = useState<Set<string>>(new Set());
 
   if (!isLoaded) {
     return (
@@ -30,12 +32,31 @@ export default function BudgetPage() {
     );
   }
 
-  const { settings, budgetItems, investments, savingsBuckets } = store;
+  const { settings, budgetItems, investments, savingsBuckets, sharedHousing, mortgages } = store;
+
+  // Toggle collapse state for parent items
+  const toggleCollapse = (itemId: string) => {
+    setCollapsedItems((prev) => {
+      const next = new Set(prev);
+      if (next.has(itemId)) {
+        next.delete(itemId);
+      } else {
+        next.add(itemId);
+      }
+      return next;
+    });
+  };
+
+  // Calculate housing share if enabled
+  const housingCalc = sharedHousing?.enabled
+    ? calculateSharedHousing(sharedHousing, settings.afterTaxWeeklyIncome)
+    : null;
 
   // Build effective budget items list including linked investments/savings
+  // NOTE: Excludes KiwiSaver (pre-tax income)
   const linkedBudgetItems: BudgetItem[] = [
     ...investments
-      .filter((inv) => inv.weeklyContribution > 0)
+      .filter((inv) => inv.weeklyContribution > 0 && inv.type !== 'kiwisaver')
       .map((inv) => ({
         id: `linked-inv-${inv.id}`,
         name: inv.name,
@@ -62,9 +83,75 @@ export default function BudgetPage() {
       })),
   ];
 
+  // Add housing expenses as synced items (parent + children)
+  const housingLinkedItems: BudgetItem[] = [];
+  if (sharedHousing?.enabled && housingCalc && sharedHousing.expenses.length > 0) {
+    const parentId = 'linked-housing-parent';
+
+    // Add parent "Housing" item
+    housingLinkedItems.push({
+      id: parentId,
+      name: 'Housing',
+      amount: 0, // Auto-calculated from children
+      frequency: 'weekly' as Frequency,
+      category: 'necessity' as BudgetCategory,
+      linkedToId: 'shared-housing',
+      linkedToType: 'housing' as const,
+      createdAt: sharedHousing.createdAt,
+      updatedAt: sharedHousing.updatedAt,
+    });
+
+    // Add mortgage payment as child (if any)
+    for (const mortgage of mortgages) {
+      const weeklyPayment = mortgage.weeklyPayment + mortgage.extraWeeklyPayment;
+      const incomeRatio = housingCalc.combinedWeeklyIncome > 0
+        ? settings.afterTaxWeeklyIncome / housingCalc.combinedWeeklyIncome
+        : 0.5;
+      const yourShare = weeklyPayment * incomeRatio;
+
+      housingLinkedItems.push({
+        id: `linked-housing-mortgage-${mortgage.id}`,
+        name: `${mortgage.name} (your share)`,
+        amount: yourShare,
+        frequency: 'weekly' as Frequency,
+        category: 'necessity' as BudgetCategory,
+        parentId: parentId,
+        linkedToId: mortgage.id,
+        linkedToType: 'mortgage' as const,
+        createdAt: mortgage.createdAt,
+        updatedAt: mortgage.updatedAt,
+      });
+    }
+
+    // Add each house expense as child
+    for (const expense of sharedHousing.expenses) {
+      const weeklyAmount = toWeekly(expense.amount, expense.frequency);
+      const incomeRatio = housingCalc.combinedWeeklyIncome > 0
+        ? settings.afterTaxWeeklyIncome / housingCalc.combinedWeeklyIncome
+        : 0.5;
+      const yourShare = weeklyAmount * incomeRatio;
+
+      housingLinkedItems.push({
+        id: `linked-housing-expense-${expense.id}`,
+        name: `${expense.name} (your share)`,
+        amount: yourShare,
+        frequency: 'weekly' as Frequency,
+        category: 'necessity' as BudgetCategory,
+        parentId: parentId,
+        linkedToId: expense.id,
+        linkedToType: 'housing_expense' as const,
+        createdAt: sharedHousing.createdAt,
+        updatedAt: sharedHousing.updatedAt,
+      });
+    }
+  }
+
+  // Combine all linked items
+  const allLinkedItems = [...linkedBudgetItems, ...housingLinkedItems];
+
   // Combine manual items with linked items (exclude duplicates)
   const manualItemIds = new Set(budgetItems.filter(i => i.linkedToId).map(i => i.linkedToId));
-  const effectiveLinkedItems = linkedBudgetItems.filter(
+  const effectiveLinkedItems = allLinkedItems.filter(
     (li) => !manualItemIds.has(li.linkedToId)
   );
 
@@ -186,6 +273,7 @@ export default function BudgetPage() {
               const isParent = itemChildren.length > 0;
               const weeklyAmount = getEffectiveWeeklyAmount(item, allBudgetItems);
               const isLinked = item.id.startsWith('linked-');
+              const isCollapsed = collapsedItems.has(item.id);
 
               return (
                 <GlassCard
@@ -201,6 +289,26 @@ export default function BudgetPage() {
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        {/* Collapse toggle for parent items */}
+                        {isParent && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleCollapse(item.id);
+                            }}
+                            className="w-6 h-6 flex items-center justify-center rounded bg-white/10 hover:bg-white/20 transition-colors"
+                          >
+                            <svg
+                              className={`w-4 h-4 text-gray-600 dark:text-gray-300 transition-transform ${isCollapsed ? '' : 'rotate-90'}`}
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                              strokeWidth={2}
+                            >
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                            </svg>
+                          </button>
+                        )}
                         <h3 className="font-semibold text-gray-900 dark:text-white">
                           {item.name}
                         </h3>
@@ -235,8 +343,8 @@ export default function BudgetPage() {
                     </div>
                   </div>
 
-                  {/* Sub-items */}
-                  {itemChildren.length > 0 && (
+                  {/* Sub-items (collapsible) */}
+                  {itemChildren.length > 0 && !isCollapsed && (
                     <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700 space-y-2">
                       {itemChildren.map((child) => (
                         <div

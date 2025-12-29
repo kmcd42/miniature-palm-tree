@@ -329,15 +329,22 @@ export function cumulativeSavings(
   return results;
 }
 
-// Format currency (NZD)
-export function formatCurrency(amount: number, showCents: boolean = true): string {
+// Swedish rounding - round to nearest dollar
+export function swedishRound(amount: number): number {
+  return Math.round(amount);
+}
+
+// Format currency (NZD) with Swedish rounding
+export function formatCurrency(amount: number, showCents: boolean = false): string {
+  // Apply Swedish rounding (nearest dollar)
+  const roundedAmount = swedishRound(amount);
   const formatter = new Intl.NumberFormat('en-NZ', {
     style: 'currency',
     currency: 'NZD',
-    minimumFractionDigits: showCents ? 2 : 0,
-    maximumFractionDigits: showCents ? 2 : 0,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
   });
-  return formatter.format(amount);
+  return formatter.format(roundedAmount);
 }
 
 // Format percentage
@@ -370,6 +377,7 @@ export function hasChildren(itemId: string, allItems: BudgetItem[]): boolean {
 }
 
 // Calculate weekly totals by category, respecting parent auto-calculation
+// IMPORTANT: Uses children's categories when parent has children
 export function calculateWeeklyByCategoryEffective(
   items: BudgetItem[]
 ): Record<BudgetCategory, number> {
@@ -379,12 +387,27 @@ export function calculateWeeklyByCategoryEffective(
     savings: 0,
   };
 
-  // Only count top-level items (no parentId) to avoid double-counting
+  // Helper to recursively sum items by their own category
+  function sumByCategory(item: BudgetItem): void {
+    const children = items.filter((i) => i.parentId === item.id);
+
+    if (children.length > 0) {
+      // This is a parent - recurse into children (use THEIR categories)
+      for (const child of children) {
+        sumByCategory(child);
+      }
+    } else {
+      // This is a leaf item - add to its own category
+      const weekly = toWeekly(item.amount, item.frequency);
+      result[item.category] += weekly;
+    }
+  }
+
+  // Only start with top-level items to avoid double-counting
   const topLevelItems = items.filter((item) => !item.parentId);
 
   for (const item of topLevelItems) {
-    const weekly = getEffectiveWeeklyAmount(item, items);
-    result[item.category] += weekly;
+    sumByCategory(item);
   }
 
   return result;
