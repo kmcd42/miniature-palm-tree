@@ -45,9 +45,9 @@ export function CardHeader({
   return (
     <div className="flex items-start justify-between mb-3">
       <div>
-        <h3 className="font-semibold text-base text-gray-900 dark:text-white">{title}</h3>
+        <h3 className="font-semibold text-base text-gray-900">{title}</h3>
         {subtitle && (
-          <p className="text-sm text-gray-500 dark:text-gray-400">{subtitle}</p>
+          <p className="text-sm text-gray-500">{subtitle}</p>
         )}
       </div>
       {action}
@@ -73,18 +73,18 @@ export function CardValue({
   };
 
   const trendColors = {
-    up: 'text-ios-green',
-    down: 'text-ios-red',
+    up: 'text-money-green',
+    down: 'text-money-red',
     neutral: 'text-gray-500',
   };
 
   return (
     <div>
-      <p className={`font-bold money-display ${sizeClasses[size]} ${trend ? trendColors[trend] : 'text-gray-900 dark:text-white'}`}>
+      <p className={`font-bold money-display-large ${sizeClasses[size]} ${trend ? trendColors[trend] : 'text-gray-900'}`}>
         {value}
       </p>
       {label && (
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{label}</p>
+        <p className="text-sm text-gray-500 mt-1">{label}</p>
       )}
     </div>
   );
@@ -102,10 +102,10 @@ export function ProgressBar({
   const clampedProgress = Math.min(100, Math.max(0, progress));
 
   const colorClasses = {
-    primary: 'bg-ios-blue',
-    success: 'bg-ios-green',
+    primary: 'bg-accent-yellow',
+    success: 'bg-money-green',
     warning: 'bg-ios-orange',
-    danger: 'bg-ios-red',
+    danger: 'bg-money-red',
   };
 
   return (
@@ -117,7 +117,7 @@ export function ProgressBar({
         />
       </div>
       {showLabel && (
-        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 text-right">
+        <p className="text-xs text-gray-500 mt-1 text-right">
           {clampedProgress.toFixed(0)}%
         </p>
       )}

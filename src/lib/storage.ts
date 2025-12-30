@@ -1,6 +1,7 @@
 import { BudgetStore, INITIAL_STORE } from '@/types/budget';
 
-const STORAGE_KEY = 'budget-clarity-data';
+const STORAGE_KEY = 'compound-data';
+const LEGACY_STORAGE_KEY = 'budget-clarity-data';
 const STORAGE_VERSION = 1;
 
 interface StorageWrapper {
@@ -16,7 +17,19 @@ export function loadStore(): BudgetStore {
   }
 
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    // Try new storage key first
+    let raw = localStorage.getItem(STORAGE_KEY);
+
+    // Migrate from legacy key if new key doesn't exist
+    if (!raw) {
+      raw = localStorage.getItem(LEGACY_STORAGE_KEY);
+      if (raw) {
+        // Migrate to new key
+        localStorage.setItem(STORAGE_KEY, raw);
+        localStorage.removeItem(LEGACY_STORAGE_KEY);
+      }
+    }
+
     if (!raw) {
       return INITIAL_STORE;
     }

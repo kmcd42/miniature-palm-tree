@@ -123,6 +123,9 @@ export interface Goal {
   updatedAt: number;
 }
 
+// Pay frequency for payday feature
+export type PayFrequency = 'weekly' | 'fortnightly' | 'monthly';
+
 // User settings
 export interface UserSettings {
   age: number;
@@ -130,6 +133,7 @@ export interface UserSettings {
   afterTaxWeeklyIncome: number;
   currency: string;
   inflationRate: number; // Annual % assumption (e.g., 2.5)
+  payFrequency?: PayFrequency; // How often user gets paid (default: fortnightly)
   createdAt: number;
   updatedAt: number;
 }
