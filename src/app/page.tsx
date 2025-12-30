@@ -13,6 +13,7 @@ import {
   projectWealthAtAge,
   calculateEmergencyFundTargetEffective,
   generateWealthProjection,
+  buildCompleteBudgetItems,
 } from '@/lib/calculations';
 
 export default function Dashboard() {
@@ -29,12 +30,22 @@ export default function Dashboard() {
     );
   }
 
-  const { settings, budgetItems, investments, mortgages, goals, savingsBuckets } = store;
+  const { settings, budgetItems, investments, mortgages, goals, savingsBuckets, sharedHousing } = store;
+
+  // Build complete budget items list including synced items from investments, savings buckets, and housing
+  const allBudgetItems = buildCompleteBudgetItems(
+    budgetItems,
+    investments,
+    savingsBuckets,
+    mortgages,
+    sharedHousing,
+    settings.afterTaxWeeklyIncome
+  );
 
   // Calculate key metrics (using effective calculation to handle parent-child relationships)
-  const weeklyByCategory = calculateWeeklyByCategoryEffective(budgetItems);
+  const weeklyByCategory = calculateWeeklyByCategoryEffective(allBudgetItems);
   const totalWeeklyCommitted = weeklyByCategory.necessity + weeklyByCategory.cost + weeklyByCategory.savings;
-  const uncommittedWeekly = calculateUncommittedIncomeEffective(settings.afterTaxWeeklyIncome, budgetItems);
+  const uncommittedWeekly = calculateUncommittedIncomeEffective(settings.afterTaxWeeklyIncome, allBudgetItems);
 
   // Investment projections
   const currentInvestmentValue = investments.reduce((sum, inv) => sum + inv.currentValue, 0);
@@ -48,10 +59,10 @@ export default function Dashboard() {
   const weeklyMortgagePayments = mortgages.reduce((sum, m) => sum + m.weeklyPayment + m.extraWeeklyPayment, 0);
   const totalPropertyValue = mortgages.reduce((sum, m) => sum + (m.propertyValue || 0), 0);
 
-  // Emergency fund goal (if exists) - uses effective calculation
+  // Emergency fund goal (if exists) - uses effective calculation with all items
   const emergencyGoal = goals.find((g) => g.type === 'emergency_fund');
   const emergencyFundTarget = emergencyGoal?.monthsOfExpenses
-    ? calculateEmergencyFundTargetEffective(budgetItems, emergencyGoal.monthsOfExpenses)
+    ? calculateEmergencyFundTargetEffective(allBudgetItems, emergencyGoal.monthsOfExpenses)
     : 0;
   const emergencyFundProgress = emergencyFundTarget > 0 && emergencyGoal
     ? (emergencyGoal.currentAmount / emergencyFundTarget) * 100
@@ -82,8 +93,8 @@ export default function Dashboard() {
         {/* Header */}
         <header className="mb-6 flex justify-between items-start">
           <div>
-            <h1 className="text-2xl font-bold text-accent-yellow font-serif">Compound</h1>
-            <p className="text-cream-200 text-sm">Your wealth dashboard</p>
+            <h1 className="text-2xl font-bold text-white">Compound</h1>
+            <p className="text-white/70 text-sm">Your wealth dashboard</p>
           </div>
           {!isNewUser && (
             <button
@@ -132,7 +143,7 @@ export default function Dashboard() {
                     {formatCurrency(weeklyByCategory.savings)}
                   </span>
                 </div>
-                <hr className="border-cream-200" />
+                <hr className="border-gray-200 dark:border-gray-700" />
                 <div className="flex justify-between items-center">
                   <span className="text-sm font-medium text-gray-900">Uncommitted</span>
                   <span className={`font-bold text-lg money-display-large ${uncommittedWeekly >= 0 ? 'text-money-green' : 'text-money-red'}`}>

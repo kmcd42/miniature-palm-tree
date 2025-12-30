@@ -678,6 +678,124 @@ export function generateWealthProjection(
   return dataPoints;
 }
 
+// Build complete budget items list including linked items from investments, savings buckets, and shared housing
+export function buildCompleteBudgetItems(
+  budgetItems: BudgetItem[],
+  investments: Investment[],
+  savingsBuckets: SavingsBucket[],
+  mortgages: Mortgage[],
+  sharedHousing: SharedHousing | undefined,
+  yourWeeklyIncome: number
+): BudgetItem[] {
+  // Start with manual budget items
+  const result: BudgetItem[] = [...budgetItems];
+
+  // Calculate housing share if enabled
+  const housingCalc = sharedHousing?.enabled
+    ? calculateSharedHousing(sharedHousing, yourWeeklyIncome)
+    : null;
+
+  // Track which items are already linked manually
+  const manuallyLinkedIds = new Set(
+    budgetItems.filter((i) => i.linkedToId).map((i) => i.linkedToId)
+  );
+
+  // Add linked investments (non-KiwiSaver with weekly contributions)
+  for (const inv of investments) {
+    if (inv.weeklyContribution > 0 && inv.type !== 'kiwisaver' && !manuallyLinkedIds.has(inv.id)) {
+      result.push({
+        id: `linked-inv-${inv.id}`,
+        name: inv.name,
+        amount: inv.weeklyContribution,
+        frequency: 'weekly' as Frequency,
+        category: 'savings' as BudgetCategory,
+        linkedToId: inv.id,
+        linkedToType: 'investment',
+        createdAt: inv.createdAt,
+        updatedAt: inv.updatedAt,
+      });
+    }
+  }
+
+  // Add linked savings buckets
+  for (const bucket of savingsBuckets) {
+    if (bucket.weeklyContribution > 0 && !manuallyLinkedIds.has(bucket.id)) {
+      result.push({
+        id: `linked-bucket-${bucket.id}`,
+        name: bucket.name,
+        amount: bucket.weeklyContribution,
+        frequency: 'weekly' as Frequency,
+        category: 'savings' as BudgetCategory,
+        linkedToId: bucket.id,
+        linkedToType: 'savings_bucket',
+        createdAt: bucket.createdAt,
+        updatedAt: bucket.updatedAt,
+      });
+    }
+  }
+
+  // Add housing expenses if enabled
+  if (sharedHousing?.enabled && housingCalc && sharedHousing.expenses.length > 0) {
+    const parentId = 'linked-housing-parent';
+    const incomeRatio = housingCalc.combinedWeeklyIncome > 0
+      ? yourWeeklyIncome / housingCalc.combinedWeeklyIncome
+      : 0.5;
+
+    // Add parent "Housing" item
+    result.push({
+      id: parentId,
+      name: 'Housing',
+      amount: 0,
+      frequency: 'weekly' as Frequency,
+      category: 'necessity' as BudgetCategory,
+      linkedToId: 'shared-housing',
+      linkedToType: 'housing',
+      createdAt: sharedHousing.createdAt,
+      updatedAt: sharedHousing.updatedAt,
+    });
+
+    // Add mortgage payments as children
+    for (const mortgage of mortgages) {
+      const weeklyPayment = mortgage.weeklyPayment + mortgage.extraWeeklyPayment;
+      const yourShare = weeklyPayment * incomeRatio;
+
+      result.push({
+        id: `linked-housing-mortgage-${mortgage.id}`,
+        name: `${mortgage.name} (your share)`,
+        amount: yourShare,
+        frequency: 'weekly' as Frequency,
+        category: 'necessity' as BudgetCategory,
+        parentId: parentId,
+        linkedToId: mortgage.id,
+        linkedToType: 'mortgage',
+        createdAt: mortgage.createdAt,
+        updatedAt: mortgage.updatedAt,
+      });
+    }
+
+    // Add house expenses as children
+    for (const expense of sharedHousing.expenses) {
+      const weeklyAmount = toWeekly(expense.amount, expense.frequency);
+      const yourShare = weeklyAmount * incomeRatio;
+
+      result.push({
+        id: `linked-housing-expense-${expense.id}`,
+        name: `${expense.name} (your share)`,
+        amount: yourShare,
+        frequency: 'weekly' as Frequency,
+        category: 'necessity' as BudgetCategory,
+        parentId: parentId,
+        linkedToId: expense.id,
+        linkedToType: 'housing_expense',
+        createdAt: sharedHousing.createdAt,
+        updatedAt: sharedHousing.updatedAt,
+      });
+    }
+  }
+
+  return result;
+}
+
 // Format relative time (e.g., "2 weeks ago")
 export function formatRelativeTime(timestamp: number): string {
   const now = Date.now();

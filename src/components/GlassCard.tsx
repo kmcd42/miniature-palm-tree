@@ -102,7 +102,7 @@ export function ProgressBar({
   const clampedProgress = Math.min(100, Math.max(0, progress));
 
   const colorClasses = {
-    primary: 'bg-accent-yellow',
+    primary: 'bg-ios-blue',
     success: 'bg-money-green',
     warning: 'bg-ios-orange',
     danger: 'bg-money-red',
