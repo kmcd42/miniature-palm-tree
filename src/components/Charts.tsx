@@ -62,8 +62,8 @@ export function WealthLineGraph({ data, height = 200, showLegend = true }: LineG
         {/* Grid lines */}
         <defs>
           <linearGradient id="netWealthGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stopColor="#34C759" stopOpacity="0.3" />
-            <stop offset="100%" stopColor="#34C759" stopOpacity="0" />
+            <stop offset="0%" stopColor="#22C55E" stopOpacity="0.25" />
+            <stop offset="100%" stopColor="#22C55E" stopOpacity="0" />
           </linearGradient>
         </defs>
 
@@ -74,7 +74,7 @@ export function WealthLineGraph({ data, height = 200, showLegend = true }: LineG
             y1={scaleY(0)}
             x2="100"
             y2={scaleY(0)}
-            stroke="rgba(255,255,255,0.3)"
+            stroke="rgba(0,0,0,0.15)"
             strokeWidth="0.5"
             strokeDasharray="2,2"
           />
@@ -90,7 +90,7 @@ export function WealthLineGraph({ data, height = 200, showLegend = true }: LineG
         <path
           d={generatePath((d) => d.netWealth)}
           fill="none"
-          stroke="#34C759"
+          stroke="#22C55E"
           strokeWidth="2"
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -145,20 +145,20 @@ export function WealthLineGraph({ data, height = 200, showLegend = true }: LineG
       {showLegend && (
         <div className="flex flex-wrap gap-3 mt-3 text-xs">
           <div className="flex items-center gap-1">
-            <div className="w-3 h-0.5 bg-ios-green rounded" />
-            <span className="text-gray-600 dark:text-gray-400">Net Wealth</span>
+            <div className="w-3 h-0.5 bg-money-green rounded" />
+            <span className="text-gray-600">Net Wealth</span>
           </div>
           <div className="flex items-center gap-1">
             <div className="w-3 h-0.5 bg-ios-blue rounded" style={{ opacity: 0.7 }} />
-            <span className="text-gray-600 dark:text-gray-400">Investments</span>
+            <span className="text-gray-600">Investments</span>
           </div>
           <div className="flex items-center gap-1">
             <div className="w-3 h-0.5 bg-ios-purple rounded" style={{ opacity: 0.7 }} />
-            <span className="text-gray-600 dark:text-gray-400">Property</span>
+            <span className="text-gray-600">Property</span>
           </div>
           <div className="flex items-center gap-1">
-            <div className="w-3 h-0.5 bg-ios-red rounded" style={{ opacity: 0.7 }} />
-            <span className="text-gray-600 dark:text-gray-400">Debt</span>
+            <div className="w-3 h-0.5 bg-money-red rounded" style={{ opacity: 0.7 }} />
+            <span className="text-gray-600">Debt</span>
           </div>
         </div>
       )}
@@ -232,7 +232,7 @@ export function BudgetStackedBar({ items, totalIncome, height = 32 }: StackedBar
         ))}
         {uncommittedPercent > 0 && (
           <div
-            className="bg-gray-300 dark:bg-gray-600 transition-all"
+            className="bg-gray-300 transition-all"
             style={{ width: `${uncommittedPercent}%` }}
             title={`Uncommitted: ${uncommittedPercent.toFixed(1)}%`}
           />
@@ -306,7 +306,7 @@ export function ProgressRing({
           fill="none"
           stroke="currentColor"
           strokeWidth={strokeWidth}
-          className="text-gray-200 dark:text-gray-700"
+          className="text-gray-200"
         />
         {/* Progress circle */}
         <circle

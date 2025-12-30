@@ -9,14 +9,34 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // iOS-inspired color palette
+        // Compound color palette
+        'navy': {
+          900: '#0a0f1a',
+          800: '#0d1424',
+          700: '#111a2e',
+          600: '#1a2540',
+        },
+        'cream': {
+          50: '#FFFDF8',
+          100: '#FBF7F0',
+          200: '#F5EDE0',
+          300: '#EDE3D0',
+        },
+        'accent': {
+          yellow: '#F5C542',
+          gold: '#D4A84B',
+        },
+        // Keep semantic colors for numbers
+        'money-green': '#22C55E',
+        'money-red': '#EF4444',
+        // Legacy iOS colors (for compatibility)
         'ios-blue': '#007AFF',
-        'ios-green': '#34C759',
-        'ios-red': '#FF3B30',
-        'ios-orange': '#FF9500',
-        'ios-yellow': '#FFCC00',
-        'ios-purple': '#AF52DE',
-        'ios-pink': '#FF2D55',
+        'ios-green': '#22C55E',
+        'ios-red': '#EF4444',
+        'ios-orange': '#F59E0B',
+        'ios-yellow': '#F5C542',
+        'ios-purple': '#8B5CF6',
+        'ios-pink': '#EC4899',
         'ios-gray': {
           50: '#F9F9F9',
           100: '#F2F2F7',
@@ -32,6 +52,7 @@ const config: Config = {
       },
       fontFamily: {
         sans: ['-apple-system', 'BlinkMacSystemFont', 'SF Pro Text', 'SF Pro Display', 'Helvetica Neue', 'Arial', 'sans-serif'],
+        serif: ['Instrument Serif', 'Georgia', 'Times New Roman', 'serif'],
       },
       borderRadius: {
         'ios': '12px',
@@ -41,6 +62,9 @@ const config: Config = {
       boxShadow: {
         'ios': '0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.06)',
         'ios-lg': '0 4px 12px rgba(0, 0, 0, 0.1)',
+        'glow-yellow': '0 0 60px rgba(245, 197, 66, 0.15)',
+        'glow-green': '0 0 60px rgba(34, 197, 94, 0.1)',
+        'glow-blue': '0 0 60px rgba(59, 130, 246, 0.1)',
       },
     },
   },

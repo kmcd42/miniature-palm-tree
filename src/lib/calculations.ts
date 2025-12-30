@@ -413,6 +413,27 @@ export function calculateWeeklyByCategoryEffective(
   return result;
 }
 
+// Calculate remaining uncommitted income using effective calculation
+export function calculateUncommittedIncomeEffective(
+  weeklyIncome: number,
+  items: BudgetItem[]
+): number {
+  const totals = calculateWeeklyByCategoryEffective(items);
+  const totalCommitted = totals.necessity + totals.cost + totals.savings;
+  return weeklyIncome - totalCommitted;
+}
+
+// Calculate emergency fund target (X months of necessities + costs) using effective calculation
+export function calculateEmergencyFundTargetEffective(
+  items: BudgetItem[],
+  monthsOfExpenses: number
+): number {
+  const totals = calculateWeeklyByCategoryEffective(items);
+  // Emergency fund should cover necessities AND costs (not just necessities)
+  const monthlyExpenses = fromWeekly(totals.necessity + totals.cost, 'monthly');
+  return monthlyExpenses * monthsOfExpenses;
+}
+
 // Project investment value since last update
 export function projectCurrentInvestmentValue(investment: Investment): {
   projectedValue: number;

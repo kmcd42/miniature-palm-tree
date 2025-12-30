@@ -1,20 +1,23 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import TabBar from '@/components/TabBar';
 import GlassCard, { CardHeader, CardValue, ProgressBar } from '@/components/GlassCard';
+import { WealthLineGraph } from '@/components/Charts';
+import PaydayModal from '@/components/PaydayModal';
 import { useBudget } from '@/lib/context';
 import {
   formatCurrency,
-  calculateWeeklyByCategory,
-  calculateUncommittedIncome,
+  calculateWeeklyByCategoryEffective,
+  calculateUncommittedIncomeEffective,
   projectWealthAtAge,
-  calculateEmergencyFundTarget,
-  toWeekly,
+  calculateEmergencyFundTargetEffective,
+  generateWealthProjection,
 } from '@/lib/calculations';
 
 export default function Dashboard() {
   const { store, isLoaded } = useBudget();
+  const [showPaydayModal, setShowPaydayModal] = useState(false);
 
   if (!isLoaded) {
     return (
@@ -28,49 +31,74 @@ export default function Dashboard() {
 
   const { settings, budgetItems, investments, mortgages, goals, savingsBuckets } = store;
 
-  // Calculate key metrics
-  const weeklyByCategory = calculateWeeklyByCategory(budgetItems);
+  // Calculate key metrics (using effective calculation to handle parent-child relationships)
+  const weeklyByCategory = calculateWeeklyByCategoryEffective(budgetItems);
   const totalWeeklyCommitted = weeklyByCategory.necessity + weeklyByCategory.cost + weeklyByCategory.savings;
-  const uncommittedWeekly = calculateUncommittedIncome(settings.afterTaxWeeklyIncome, budgetItems);
+  const uncommittedWeekly = calculateUncommittedIncomeEffective(settings.afterTaxWeeklyIncome, budgetItems);
 
   // Investment projections
   const currentInvestmentValue = investments.reduce((sum, inv) => sum + inv.currentValue, 0);
   const weeklyInvestmentContributions = investments.reduce((sum, inv) => sum + inv.weeklyContribution, 0);
 
   // Wealth projections
-  const wealth1Year = projectWealthAtAge(settings.age, settings.age + 1, investments, mortgages, settings.inflationRate);
-  const wealth5Year = projectWealthAtAge(settings.age, settings.age + 5, investments, mortgages, settings.inflationRate);
   const wealthRetirement = projectWealthAtAge(settings.age, settings.retirementAge, investments, mortgages, settings.inflationRate);
 
   // Mortgage stats
   const totalMortgageBalance = mortgages.reduce((sum, m) => sum + m.principal, 0);
   const weeklyMortgagePayments = mortgages.reduce((sum, m) => sum + m.weeklyPayment + m.extraWeeklyPayment, 0);
+  const totalPropertyValue = mortgages.reduce((sum, m) => sum + (m.propertyValue || 0), 0);
 
-  // Emergency fund goal (if exists)
+  // Emergency fund goal (if exists) - uses effective calculation
   const emergencyGoal = goals.find((g) => g.type === 'emergency_fund');
   const emergencyFundTarget = emergencyGoal?.monthsOfExpenses
-    ? calculateEmergencyFundTarget(budgetItems, emergencyGoal.monthsOfExpenses)
+    ? calculateEmergencyFundTargetEffective(budgetItems, emergencyGoal.monthsOfExpenses)
     : 0;
   const emergencyFundProgress = emergencyFundTarget > 0 && emergencyGoal
     ? (emergencyGoal.currentAmount / emergencyFundTarget) * 100
     : 0;
 
+  // Top financial goal (first non-emergency goal or emergency if that's all there is)
+  const topGoal = goals.find((g) => g.type !== 'emergency_fund') || emergencyGoal;
+
+  // Current net wealth
+  const currentNetWealth = currentInvestmentValue + totalPropertyValue - totalMortgageBalance;
+
+  // Generate wealth projection data for the chart
+  const wealthProjectionData = generateWealthProjection(
+    settings.age,
+    settings.retirementAge,
+    investments,
+    mortgages,
+    totalPropertyValue,
+    settings.inflationRate
+  );
+
   // Check if this is a new user (no income set)
   const isNewUser = settings.afterTaxWeeklyIncome === 0;
 
   return (
-    <main className="min-h-screen pb-24 safe-top">
+    <main className="min-h-screen pb-24 safe-top relative z-10">
       <div className="max-w-6xl mx-auto px-4 py-6">
         {/* Header */}
-        <header className="mb-6">
-          <h1 className="text-2xl font-bold text-white">Budget Clarity</h1>
-          <p className="text-white/70 text-sm">Your financial dashboard</p>
+        <header className="mb-6 flex justify-between items-start">
+          <div>
+            <h1 className="text-2xl font-bold text-accent-yellow font-serif">Compound</h1>
+            <p className="text-cream-200 text-sm">Your wealth dashboard</p>
+          </div>
+          {!isNewUser && (
+            <button
+              onClick={() => setShowPaydayModal(true)}
+              className="ios-button text-sm py-2 px-4"
+            >
+              Log Payday
+            </button>
+          )}
         </header>
 
         {isNewUser ? (
           <GlassCard variant="wide" className="mb-6">
             <CardHeader title="Welcome!" subtitle="Let's set up your budget" />
-            <p className="text-gray-600 dark:text-gray-300 mb-4">
+            <p className="text-gray-600 mb-4">
               Start by adding your after-tax weekly income in Settings, then add your budget items.
             </p>
             <a href="/settings" className="ios-button inline-block">
@@ -78,36 +106,36 @@ export default function Dashboard() {
             </a>
           </GlassCard>
         ) : (
-          <div className="bento-grid">
-            {/* Weekly Budget Overview */}
-            <GlassCard variant="wide">
+          <div className="space-y-4">
+            {/* Weekly Budget + Log Payday Row */}
+            <GlassCard>
               <CardHeader
                 title="Weekly Budget"
                 subtitle={`${formatCurrency(settings.afterTaxWeeklyIncome, false)}/week income`}
               />
               <div className="space-y-3">
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600 dark:text-gray-300">Necessities</span>
-                  <span className="font-semibold money-display text-ios-red">
+                  <span className="text-sm text-gray-600">Necessities</span>
+                  <span className="font-semibold money-display text-money-red">
                     {formatCurrency(weeklyByCategory.necessity)}
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600 dark:text-gray-300">Costs</span>
+                  <span className="text-sm text-gray-600">Costs</span>
                   <span className="font-semibold money-display text-ios-orange">
                     {formatCurrency(weeklyByCategory.cost)}
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600 dark:text-gray-300">Savings</span>
-                  <span className="font-semibold money-display text-ios-green">
+                  <span className="text-sm text-gray-600">Savings</span>
+                  <span className="font-semibold money-display text-money-green">
                     {formatCurrency(weeklyByCategory.savings)}
                   </span>
                 </div>
-                <hr className="border-gray-200 dark:border-gray-700" />
+                <hr className="border-cream-200" />
                 <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium text-gray-900 dark:text-white">Uncommitted</span>
-                  <span className={`font-bold text-lg money-display ${uncommittedWeekly >= 0 ? 'text-ios-green' : 'text-ios-red'}`}>
+                  <span className="text-sm font-medium text-gray-900">Uncommitted</span>
+                  <span className={`font-bold text-lg money-display-large ${uncommittedWeekly >= 0 ? 'text-money-green' : 'text-money-red'}`}>
                     {formatCurrency(uncommittedWeekly)}
                   </span>
                 </div>
@@ -118,87 +146,87 @@ export default function Dashboard() {
               </div>
             </GlassCard>
 
-            {/* Net Wealth Now */}
-            <GlassCard>
-              <CardHeader title="Net Wealth" subtitle="Current" />
-              <CardValue
-                value={formatCurrency(currentInvestmentValue - totalMortgageBalance, false)}
-                label="Assets minus debt"
-                size="large"
-              />
-            </GlassCard>
-
-            {/* Wealth at Retirement */}
-            <GlassCard>
-              <CardHeader title={`Wealth at ${settings.retirementAge}`} subtitle="Inflation-adjusted" />
-              <CardValue
-                value={formatCurrency(wealthRetirement.netWealthReal, false)}
-                label={`${settings.retirementAge - settings.age} years away`}
-                trend="up"
-                size="large"
-              />
-            </GlassCard>
-
-            {/* 1 Year Projection */}
-            <GlassCard>
-              <CardHeader title="In 1 Year" subtitle="Projected net wealth" />
-              <CardValue
-                value={formatCurrency(wealth1Year.netWealthReal, false)}
-                size="medium"
-              />
-            </GlassCard>
-
-            {/* 5 Year Projection */}
-            <GlassCard>
-              <CardHeader title="In 5 Years" subtitle="Projected net wealth" />
-              <CardValue
-                value={formatCurrency(wealth5Year.netWealthReal, false)}
-                size="medium"
-              />
-            </GlassCard>
-
-            {/* Investments */}
-            <GlassCard>
-              <CardHeader title="Investments" subtitle={`${investments.length} accounts`} />
-              <CardValue
-                value={formatCurrency(currentInvestmentValue, false)}
-                label={`+${formatCurrency(weeklyInvestmentContributions)}/week`}
-                size="medium"
-              />
-            </GlassCard>
-
-            {/* Mortgage */}
-            {mortgages.length > 0 && (
-              <GlassCard>
-                <CardHeader title="Mortgage" subtitle="Remaining" />
-                <CardValue
-                  value={formatCurrency(totalMortgageBalance, false)}
-                  label={`${formatCurrency(weeklyMortgagePayments)}/week payments`}
-                  size="medium"
-                  trend="down"
-                />
+            {/* Scorecard Row - Investments, Mortgage, Top Goal */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {/* Investments Scorecard */}
+              <GlassCard className="text-center">
+                <div className="text-xs uppercase tracking-wide text-gray-500 mb-1">Investments</div>
+                <div className="text-2xl font-bold money-display-large text-gray-900">
+                  {formatCurrency(currentInvestmentValue, false)}
+                </div>
+                <div className="text-xs text-money-green mt-1">
+                  +{formatCurrency(weeklyInvestmentContributions)}/wk
+                </div>
               </GlassCard>
-            )}
 
-            {/* Emergency Fund */}
-            {emergencyGoal && (
-              <GlassCard>
-                <CardHeader
-                  title="Emergency Fund"
-                  subtitle={`${emergencyGoal.monthsOfExpenses} months target`}
-                />
-                <CardValue
-                  value={formatCurrency(emergencyGoal.currentAmount, false)}
-                  label={`of ${formatCurrency(emergencyFundTarget, false)} target`}
-                  size="medium"
-                />
-                <ProgressBar
-                  progress={emergencyFundProgress}
-                  color={emergencyFundProgress >= 100 ? 'success' : 'primary'}
-                  showLabel
-                />
+              {/* Mortgage Scorecard */}
+              <GlassCard className="text-center">
+                <div className="text-xs uppercase tracking-wide text-gray-500 mb-1">
+                  {mortgages.length > 0 ? 'Mortgage' : 'Property'}
+                </div>
+                <div className={`text-2xl font-bold money-display-large ${mortgages.length > 0 ? 'text-money-red' : 'text-gray-900'}`}>
+                  {mortgages.length > 0
+                    ? formatCurrency(totalMortgageBalance, false)
+                    : formatCurrency(totalPropertyValue, false)
+                  }
+                </div>
+                {mortgages.length > 0 && (
+                  <div className="text-xs text-gray-500 mt-1">
+                    {formatCurrency(weeklyMortgagePayments)}/wk
+                  </div>
+                )}
               </GlassCard>
-            )}
+
+              {/* Top Goal Scorecard */}
+              <GlassCard className="text-center">
+                <div className="text-xs uppercase tracking-wide text-gray-500 mb-1 truncate">
+                  {topGoal?.name || 'No Goals'}
+                </div>
+                {topGoal ? (
+                  <>
+                    <div className="text-2xl font-bold money-display-large text-gray-900">
+                      {topGoal.type === 'emergency_fund'
+                        ? `${Math.round(emergencyFundProgress)}%`
+                        : formatCurrency(topGoal.currentAmount, false)
+                      }
+                    </div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      {topGoal.type === 'emergency_fund'
+                        ? `of ${formatCurrency(emergencyFundTarget, false)}`
+                        : `of ${formatCurrency(topGoal.targetAmount, false)}`
+                      }
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-lg text-gray-400">—</div>
+                )}
+              </GlassCard>
+            </div>
+
+            {/* Wealth Projection Visualization */}
+            <GlassCard>
+              <div className="flex justify-between items-start mb-4">
+                <div>
+                  <h3 className="font-semibold text-base text-gray-900">Wealth Over Time</h3>
+                  <p className="text-sm text-gray-500">Inflation-adjusted projection</p>
+                </div>
+                <div className="text-right">
+                  <div className="text-xs uppercase tracking-wide text-gray-500">At {settings.retirementAge}</div>
+                  <div className="text-xl font-bold money-display-large text-money-green">
+                    {formatCurrency(wealthRetirement.netWealthReal, false)}
+                  </div>
+                </div>
+              </div>
+              <WealthLineGraph
+                data={wealthProjectionData}
+                height={160}
+                showLegend={false}
+              />
+              <div className="flex justify-between text-xs text-gray-500 mt-2">
+                <span>Now: {formatCurrency(currentNetWealth, false)}</span>
+                <span className="text-money-green">+{formatCurrency(wealthRetirement.netWealthReal - currentNetWealth, false)}</span>
+              </div>
+            </GlassCard>
 
             {/* Savings Buckets Summary */}
             {savingsBuckets.length > 0 && (
@@ -207,10 +235,10 @@ export default function Dashboard() {
                 <div className="space-y-2">
                   {savingsBuckets.slice(0, 3).map((bucket) => (
                     <div key={bucket.id} className="flex justify-between items-center text-sm">
-                      <span className="text-gray-600 dark:text-gray-300 truncate mr-2">
+                      <span className="text-gray-600 truncate mr-2">
                         {bucket.name}
                       </span>
-                      <span className="font-medium money-display">
+                      <span className="font-medium money-display text-gray-900">
                         {formatCurrency(bucket.currentAmount, false)}
                       </span>
                     </div>
@@ -222,23 +250,25 @@ export default function Dashboard() {
               </GlassCard>
             )}
 
-            {/* Quick Actions */}
-            <GlassCard>
-              <CardHeader title="Quick Add" />
-              <div className="space-y-2">
-                <a href="/budget" className="ios-button-secondary block text-center text-sm">
-                  Add Budget Item
-                </a>
-                <a href="/wealth" className="ios-button-secondary block text-center text-sm">
-                  Update Investments
-                </a>
-              </div>
-            </GlassCard>
+            {/* Quick Actions - more compact */}
+            <div className="grid grid-cols-2 gap-4">
+              <a href="/budget" className="ios-button-secondary block text-center text-sm py-3">
+                Add Budget Item
+              </a>
+              <a href="/wealth" className="ios-button-secondary block text-center text-sm py-3">
+                Update Investments
+              </a>
+            </div>
           </div>
         )}
       </div>
 
       <TabBar />
+
+      {/* Payday Modal */}
+      {showPaydayModal && (
+        <PaydayModal onClose={() => setShowPaydayModal(false)} />
+      )}
     </main>
   );
 }
