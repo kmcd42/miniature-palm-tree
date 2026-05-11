@@ -137,6 +137,18 @@ export interface UserSettings {
   inflationRate: number;     // Annual % assumption (e.g., 2.5)
   safeWithdrawalRate: number; // Annual % real, used for drawdown calc. Default 4.0.
   payFrequency?: PayFrequency;
+
+  // NZ Superannuation modelling (off by default — it's not certain)
+  includeNzSuper: boolean;
+  nzSuperWeeklyAmount: number;   // Combined weekly amount in today's dollars (real)
+  nzSuperEligibilityAge: number; // Default 65
+
+  // Reality-check benchmarks (Massey & median net worth)
+  showBenchmarks: boolean;
+  // User-overridable Massey weekly expenditure figures (real, today's $)
+  masseyTwoPersonNoFrills: number;
+  masseyTwoPersonChoices: number;
+
   createdAt: number;
   updatedAt: number;
 }
@@ -162,6 +174,12 @@ export const DEFAULT_SETTINGS: UserSettings = {
   currency: 'NZD',
   inflationRate: 2.5,
   safeWithdrawalRate: 4.0,
+  includeNzSuper: false,
+  nzSuperWeeklyAmount: 804,        // 2024 couple, both qualifying, after tax @ M (combined)
+  nzSuperEligibilityAge: 65,
+  showBenchmarks: true,
+  masseyTwoPersonNoFrills: 902,    // Massey REG 2023 figures, urban two-person
+  masseyTwoPersonChoices: 1533,    // Massey REG 2023 figures, urban two-person
   createdAt: Date.now(),
   updatedAt: Date.now(),
 };

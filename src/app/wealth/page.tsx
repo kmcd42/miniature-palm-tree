@@ -103,17 +103,36 @@ export default function WealthPage() {
 
           <Panel brackets glow>
             <CardHeader title={`Drawdown · ${settings.retirementAge}→${settings.lifeExpectancy}`} subtitle={`${Math.round(yrsToRet)} yr horizon · ${yrsInRet} yr retirement`} />
-            {drawdown ? (
+            {drawdown && drawdown.portfolioAtRetirementReal > 0 ? (
               <>
-                <FitNumber
-                  value={`${formatCurrency(drawdown.expectedWeekly)}/wk`}
-                  baseSize={32}
-                  minSize={18}
-                  className="text-phosphor-amber mono-num-glow font-medium"
-                />
-                <div className="font-mono text-[10px] tracking-[0.16em] uppercase text-ink-500 mt-1.5 mb-3">
-                  REAL · {formatCurrency(drawdown.monthlyDrawdownReal)}/MO · {formatCurrency(drawdown.yearlyDrawdownReal, false)}/YR
+                {/* Mode A — deplete */}
+                <div className="mb-3">
+                  <div className="term-label-plain mb-0.5">Deplete · spend to zero</div>
+                  <FitNumber
+                    value={`${formatCurrency(drawdown.expectedWeekly + drawdown.nzSuperWeekly)}/wk`}
+                    baseSize={28}
+                    minSize={16}
+                    className="text-phosphor-amber mono-num-glow font-medium"
+                  />
+                  <div className="font-mono text-[10px] tracking-[0.14em] uppercase text-ink-500 mt-1">
+                    PORTFOLIO {formatCurrency(drawdown.expectedWeekly)}{drawdown.nzSuperEligible ? ` + SUPER ${formatCurrency(drawdown.nzSuperWeekly)}` : ''} · TO AGE {settings.lifeExpectancy}
+                  </div>
                 </div>
+
+                {/* Mode B — perpetual */}
+                <div className="mb-3 pt-3 border-t border-graphite-600">
+                  <div className="term-label-plain mb-0.5">Perpetual · live off returns</div>
+                  <FitNumber
+                    value={`${formatCurrency(drawdown.perpetualWeekly + drawdown.nzSuperWeekly)}/wk`}
+                    baseSize={28}
+                    minSize={16}
+                    className="text-phosphor-mint mono-num-glow-mint font-medium"
+                  />
+                  <div className="font-mono text-[10px] tracking-[0.14em] uppercase text-ink-500 mt-1">
+                    PORTFOLIO {formatCurrency(drawdown.perpetualWeekly)}{drawdown.nzSuperEligible ? ` + SUPER ${formatCurrency(drawdown.nzSuperWeekly)}` : ''} · PRINCIPAL PRESERVED
+                  </div>
+                </div>
+
                 <DrawdownBands
                   conservative={drawdown.conservativeWeekly}
                   expected={drawdown.expectedWeekly}
@@ -121,12 +140,13 @@ export default function WealthPage() {
                   format={(n) => formatCurrency(n)}
                 />
                 <div className="mt-3 text-[10px] font-mono tracking-[0.14em] uppercase text-ink-500 leading-relaxed">
-                  ▸ Portfolio at retirement: {formatCurrencyCompact(drawdown.portfolioAtRetirementReal)} (real). Bands = SWR ±1.5%.
+                  ▸ Portfolio (investments only): {formatCurrencyCompact(drawdown.portfolioAtRetirementReal)} real · real return {(drawdown.realReturnRate * 100).toFixed(1)}%/yr. Bands = SWR ±1.5% on deplete.
+                  {!drawdown.nzSuperEligible && settings.includeNzSuper && ` Super activates from age ${drawdown.nzSuperEligibilityAge}.`}
                 </div>
               </>
             ) : (
               <p className="text-sm text-ink-500 py-4">
-                Add investments or property to compute a sustainable drawdown.
+                Add investments to compute a sustainable drawdown. House equity isn&apos;t counted — it stays a house.
               </p>
             )}
           </Panel>
@@ -308,7 +328,7 @@ export default function WealthPage() {
                     />
                   </div>
                   <div>
-                    <label className="term-label-plain block mb-1.5">▸ Partner weekly income</label>
+                    <label className="term-label-plain block mb-1.5">▸ Partner income/wk</label>
                     <input
                       type="number"
                       value={sharedHousing.partnerWeeklyIncome || ''}
@@ -473,7 +493,7 @@ function Stat({ label, value, accent, size = 28 }: { label: string; value: strin
   }[accent];
   return (
     <div>
-      <div className="term-label-plain mb-1">▸ {label}</div>
+      <div className="term-label-plain mb-1">{label}</div>
       <FitNumber value={value} baseSize={size} minSize={14} className={`${cls} font-medium`} />
     </div>
   );
@@ -488,7 +508,7 @@ function MiniStat({ label, value, accent }: { label: string; value: string; acce
     : 'text-ink-100';
   return (
     <div>
-      <div className="term-label-plain mb-0.5">▸ {label}</div>
+      <div className="term-label-plain mb-0.5">{label}</div>
       <FitNumber value={value} baseSize={16} minSize={11} className={`${cls} font-medium`} />
     </div>
   );
