@@ -136,18 +136,6 @@ export default function Dashboard() {
         ) : (
           <div className="space-y-4">
 
-            {/* Insights stream */}
-            {insights.length > 0 && (
-              <section className="space-y-2">
-                <div className="font-mono text-[10px] tracking-[0.22em] uppercase text-ink-500 pl-1">
-                  ▸ Insight stream · {insights.length} active
-                </div>
-                {insights.slice(0, 5).map((ins) => (
-                  <InsightRow key={ins.id} insight={ins} />
-                ))}
-              </section>
-            )}
-
             {/* Hero row: cashflow + retirement drawdown */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
@@ -348,6 +336,19 @@ export default function Dashboard() {
                   })}
                 </div>
               </Panel>
+            )}
+
+            {/* Insights stream — lives at the bottom; the day-to-day numbers
+                lead, the prompts follow */}
+            {insights.length > 0 && (
+              <section className="space-y-2 pt-2">
+                <div className="font-mono text-[10px] tracking-[0.22em] uppercase text-ink-500 pl-1">
+                  ▸ Insight stream · {insights.length} active
+                </div>
+                {insights.slice(0, 5).map((ins) => (
+                  <InsightRow key={ins.id} insight={ins} />
+                ))}
+              </section>
             )}
           </div>
         )}
