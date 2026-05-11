@@ -71,7 +71,7 @@ export default function SettingsPage() {
     }
   };
 
-  const updateSetting = (key: keyof typeof settings, value: number | string | undefined) => {
+  const updateSetting = (key: keyof typeof settings, value: number | string | boolean | undefined) => {
     dispatch({ type: 'UPDATE_SETTINGS', payload: { [key]: value } });
   };
 
@@ -184,7 +184,7 @@ export default function SettingsPage() {
                   <p className="text-[11px] text-ink-500 mt-1">Real-dollar projection</p>
                 </div>
                 <div>
-                  <label className="term-label-plain block mb-1.5">▸ Safe withdrawal rate %</label>
+                  <label className="term-label-plain block mb-1.5">▸ Safe withdrawal %</label>
                   <input
                     type="number"
                     value={settings.safeWithdrawalRate || ''}
@@ -196,6 +196,101 @@ export default function SettingsPage() {
                   <p className="text-[11px] text-ink-500 mt-1">Default 4% (Trinity study)</p>
                 </div>
               </div>
+            </div>
+          </Panel>
+
+          {/* NZ Super */}
+          <Panel brackets>
+            <CardHeader title="NZ Super · Couple" subtitle="Adds to weekly retirement income (not certain — opt in)" />
+
+            <div className="space-y-4">
+              <label className="flex items-center justify-between gap-3 cursor-pointer">
+                <span>
+                  <span className="term-label-plain block mb-0.5">▸ Include in projections</span>
+                  <span className="text-[11px] text-ink-500">Adds NZ Super to weekly draw from eligibility age onward</span>
+                </span>
+                <Toggle
+                  on={settings.includeNzSuper}
+                  onChange={(v) => updateSetting('includeNzSuper', v)}
+                />
+              </label>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="term-label-plain block mb-1.5">▸ Combined weekly</label>
+                  <input
+                    type="number"
+                    value={settings.nzSuperWeeklyAmount || ''}
+                    onChange={(e) => updateSetting('nzSuperWeeklyAmount', parseFloat(e.target.value) || 0)}
+                    placeholder="804"
+                    step="1" min="0"
+                    className="term-input"
+                    disabled={!settings.includeNzSuper}
+                  />
+                  <p className="text-[11px] text-ink-500 mt-1">After-tax, today&apos;s $</p>
+                </div>
+                <div>
+                  <label className="term-label-plain block mb-1.5">▸ Eligibility age</label>
+                  <input
+                    type="number"
+                    value={settings.nzSuperEligibilityAge || ''}
+                    onChange={(e) => updateSetting('nzSuperEligibilityAge', parseInt(e.target.value) || 0)}
+                    placeholder="65"
+                    min="55" max="80"
+                    className="term-input"
+                    disabled={!settings.includeNzSuper}
+                  />
+                  <p className="text-[11px] text-ink-500 mt-1">NZ default 65</p>
+                </div>
+              </div>
+            </div>
+          </Panel>
+
+          {/* Benchmarks */}
+          <Panel brackets>
+            <CardHeader title="Reality Check · NZ Benchmarks" subtitle="Massey Retirement Expenditure + median net worth" />
+
+            <div className="space-y-4">
+              <label className="flex items-center justify-between gap-3 cursor-pointer">
+                <span>
+                  <span className="term-label-plain block mb-0.5">▸ Show on dashboard</span>
+                  <span className="text-[11px] text-ink-500">Compare against NZ medians and Massey guidelines</span>
+                </span>
+                <Toggle
+                  on={settings.showBenchmarks}
+                  onChange={(v) => updateSetting('showBenchmarks', v)}
+                />
+              </label>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="term-label-plain block mb-1.5">▸ Massey · No Frills</label>
+                  <input
+                    type="number"
+                    value={settings.masseyTwoPersonNoFrills || ''}
+                    onChange={(e) => updateSetting('masseyTwoPersonNoFrills', parseFloat(e.target.value) || 0)}
+                    placeholder="902"
+                    step="1" min="0"
+                    className="term-input"
+                  />
+                  <p className="text-[11px] text-ink-500 mt-1">2-person urban /wk</p>
+                </div>
+                <div>
+                  <label className="term-label-plain block mb-1.5">▸ Massey · Choices</label>
+                  <input
+                    type="number"
+                    value={settings.masseyTwoPersonChoices || ''}
+                    onChange={(e) => updateSetting('masseyTwoPersonChoices', parseFloat(e.target.value) || 0)}
+                    placeholder="1533"
+                    step="1" min="0"
+                    className="term-input"
+                  />
+                  <p className="text-[11px] text-ink-500 mt-1">2-person urban /wk</p>
+                </div>
+              </div>
+              <p className="text-[11px] text-ink-500 font-mono tracking-[0.14em] uppercase">
+                ▸ Update annually from massey.ac.nz/fin-ed
+              </p>
             </div>
           </Panel>
 
@@ -263,5 +358,28 @@ export default function SettingsPage() {
 
       <TabBar />
     </main>
+  );
+}
+
+function Toggle({ on, onChange }: { on: boolean; onChange: (next: boolean) => void }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(!on)}
+      aria-pressed={on}
+      className={`relative inline-flex w-11 h-6 rounded-full border transition-colors shrink-0 ${
+        on
+          ? 'bg-phosphor-amber/14 border-phosphor-amber'
+          : 'bg-graphite-700 border-graphite-500'
+      }`}
+    >
+      <span
+        className={`absolute top-0.5 w-4 h-4 rounded-full transition-all ${
+          on
+            ? 'left-[22px] bg-phosphor-amber shadow-glow-amber'
+            : 'left-0.5 bg-ink-500'
+        }`}
+      />
+    </button>
   );
 }

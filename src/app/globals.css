@@ -31,9 +31,9 @@
 
   /* Ink */
   --ink-bright: #E5EEF1;
-  --ink-mid: #A8B7BC;
-  --ink-dim: #7A8B91;
-  --ink-faint: #4A595F;
+  --ink-mid: #B8C5CA;
+  --ink-dim: #98A6AC;
+  --ink-faint: #5E6D72;
 
   /* Category semantics */
   --cat-necessity: #FF6B5C;
@@ -216,9 +216,19 @@ body::after {
   .term-label-plain {
     font-family: 'JetBrains Mono', 'IBM Plex Mono', Menlo, monospace;
     font-size: 10px;
-    letter-spacing: 0.18em;
+    letter-spacing: 0.16em;
     text-transform: uppercase;
     color: var(--ink-dim);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* When you actually need a label to wrap, opt back in */
+  .term-label-wrap {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
   }
 
   /* Mono numerals — tabular phosphor display */

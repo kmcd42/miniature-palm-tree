@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import TabBar from '@/components/TabBar';
 import Panel, { CategoryBadge, StatusDot, FitNumber } from '@/components/GlassCard';
 import BottomSheet from '@/components/BottomSheet';
@@ -13,7 +13,6 @@ import {
   getEffectiveWeeklyAmount,
   calculateWeeklyByCategoryEffective,
   calculateSharedHousing,
-  partnerSplit,
 } from '@/lib/calculations';
 
 export default function BudgetPage() {
@@ -22,6 +21,28 @@ export default function BudgetPage() {
   const [editingItem, setEditingItem] = useState<BudgetItem | null>(null);
   const [filter, setFilter] = useState<BudgetCategory | 'all'>('all');
   const [collapsedItems, setCollapsedItems] = useState<Set<string>>(new Set());
+  const collapseInitialized = useRef(false);
+
+  // Collapse all parent items the first time the budget loads. Runs unconditionally
+  // so the rules-of-hooks aren't violated by the loading early-return below.
+  useEffect(() => {
+    if (!isLoaded || collapseInitialized.current) return;
+    collapseInitialized.current = true;
+    const parents = new Set<string>();
+    for (const item of store.budgetItems) {
+      if (!item.parentId && store.budgetItems.some((c) => c.parentId === item.id)) {
+        parents.add(item.id);
+      }
+    }
+    // Synthetic shared-housing parent
+    if (
+      store.sharedHousing?.enabled &&
+      (store.sharedHousing.expenses.length > 0 || store.mortgages.length > 0)
+    ) {
+      parents.add('linked-housing-parent');
+    }
+    if (parents.size > 0) setCollapsedItems(parents);
+  }, [isLoaded, store.budgetItems, store.sharedHousing, store.mortgages]);
 
   if (!isLoaded) {
     return (
@@ -32,9 +53,6 @@ export default function BudgetPage() {
   }
 
   const { settings, budgetItems, investments, savingsBuckets, sharedHousing, mortgages } = store;
-  const partnerName = sharedHousing?.partnerName || 'Partner';
-  const partnerIncome = sharedHousing?.partnerWeeklyIncome || 0;
-  const sharingActive = !!sharedHousing?.enabled && partnerIncome > 0;
 
   const toggleCollapse = (itemId: string) => {
     setCollapsedItems((prev) => {
@@ -166,14 +184,6 @@ export default function BudgetPage() {
     }
   };
 
-  // Identify if a given item is shared (i.e. came from shared housing)
-  function isHousingShared(item: BudgetItem): boolean {
-    return !!item.parentId && item.parentId === 'linked-housing-parent';
-  }
-  function housingParent(): BudgetItem | undefined {
-    return parentItems.find((p) => p.id === 'linked-housing-parent');
-  }
-
   return (
     <main className="min-h-screen pb-24 safe-top">
       <div className="max-w-4xl mx-auto px-4 py-5">
@@ -249,10 +259,17 @@ export default function BudgetPage() {
               const isCollapsed = collapsedItems.has(item.id);
               const isHousingParent = item.id === 'linked-housing-parent';
 
-              // Partner split metadata for the parent
-              let parentSplitInfo: ReturnType<typeof partnerSplit> | null = null;
-              if (isHousingParent && sharingActive) {
-                parentSplitInfo = partnerSplit(weeklyAmount, settings.afterTaxWeeklyIncome, partnerIncome);
+              // For the shared housing parent, compute what % of combined
+              // (you + partner) income goes to shared expenses. This is the
+              // useful number — the split between you and partner is by
+              // definition the same income ratio for every line, so it's not
+              // informative to repeat per-row.
+              let householdPct: number | null = null;
+              let householdTotalWeekly: number | null = null;
+              const isShared = !!sharedHousing?.enabled && (sharedHousing.partnerWeeklyIncome ?? 0) > 0;
+              if (isHousingParent && isShared && housingCalc && housingCalc.combinedWeeklyIncome > 0) {
+                householdTotalWeekly = housingCalc.totalWeeklyExpenses;
+                householdPct = (housingCalc.totalWeeklyExpenses / housingCalc.combinedWeeklyIncome) * 100;
               }
 
               return (
@@ -284,7 +301,7 @@ export default function BudgetPage() {
                         <CategoryBadge category={item.category} />
                         {isParent && <span className="pill pill-cyan">AUTO</span>}
                         {isLinked && <span className="pill pill-violet">SYNC</span>}
-                        {isHousingParent && sharingActive && <span className="pill pill-violet">SHARED</span>}
+                        {isHousingParent && isShared && <span className="pill pill-violet">SHARED</span>}
                       </div>
                       {!isParent && (
                         <div className="font-mono text-[10px] tracking-[0.14em] uppercase text-ink-500 mt-0.5">
@@ -296,9 +313,9 @@ export default function BudgetPage() {
                           {itemChildren.length} ITEM{itemChildren.length === 1 ? '' : 'S'} COMBINED
                         </div>
                       )}
-                      {isHousingParent && parentSplitInfo && (
+                      {isHousingParent && householdTotalWeekly != null && (
                         <div className="font-mono text-[10px] tracking-[0.14em] uppercase text-ink-500 mt-0.5">
-                          HOUSEHOLD {formatCurrency(parentSplitInfo.total)}/WK · {itemChildren.length} ITEMS
+                          HOUSEHOLD {formatCurrency(householdTotalWeekly)}/WK · {itemChildren.length} ITEMS
                         </div>
                       )}
                     </div>
@@ -308,17 +325,15 @@ export default function BudgetPage() {
                     </div>
                   </div>
 
-                  {/* Housing parent split bar */}
-                  {isHousingParent && parentSplitInfo && (
-                    <div className="mt-3 pt-3 border-t border-graphite-600">
-                      <div className="split-bar mb-1.5">
-                        <div style={{ width: `${parentSplitInfo.yourRatio * 100}%`, background: '#5BC8FF', boxShadow: '0 0 4px #5BC8FF' }} />
-                        <div style={{ width: `${(1 - parentSplitInfo.yourRatio) * 100}%`, background: '#C599FF', boxShadow: '0 0 4px #C599FF' }} />
-                      </div>
-                      <div className="flex justify-between font-mono text-[10px] tracking-[0.14em] uppercase">
-                        <span className="text-phosphor-cyan/90">YOU {formatCurrency(parentSplitInfo.yourShare)}</span>
-                        <span className="text-phosphor-violet/90">{partnerName.toUpperCase()} {formatCurrency(parentSplitInfo.partnerShare)}</span>
-                      </div>
+                  {/* Housing parent: % of combined household income going to shared expenses */}
+                  {isHousingParent && householdPct != null && householdTotalWeekly != null && (
+                    <div className="mt-3 pt-3 border-t border-graphite-600 flex items-baseline justify-between gap-3 flex-wrap">
+                      <span className="font-mono text-[10px] tracking-[0.16em] uppercase text-ink-500">
+                        Of combined income
+                      </span>
+                      <span className="mono-num text-base text-phosphor-amber font-medium">
+                        {householdPct.toFixed(1)}%
+                      </span>
                     </div>
                   )}
 
@@ -327,9 +342,6 @@ export default function BudgetPage() {
                     <div className="mt-3 pt-3 border-t border-graphite-600 space-y-1.5">
                       {itemChildren.map((child) => {
                         const childWeekly = toWeekly(child.amount, child.frequency);
-                        const childSplit = sharingActive && isHousingShared(child)
-                          ? partnerSplit(childWeekly, settings.afterTaxWeeklyIncome, partnerIncome)
-                          : null;
                         return (
                           <div
                             key={child.id}
@@ -341,13 +353,6 @@ export default function BudgetPage() {
                           >
                             <div className="min-w-0">
                               <div className="text-ink-300 text-sm truncate">{child.name}</div>
-                              {childSplit && (
-                                <div className="font-mono text-[10px] tracking-[0.14em] uppercase text-ink-500 mt-0.5">
-                                  <span className="text-phosphor-violet/90">{partnerName.toUpperCase()} +{formatCurrency(childSplit.partnerShare)}</span>
-                                  <span className="text-ink-700 mx-1.5">·</span>
-                                  <span>TOTAL {formatCurrency(childSplit.total)}</span>
-                                </div>
-                              )}
                             </div>
                             <span className="mono-num text-ink-100 ml-3 shrink-0">{formatCurrency(childWeekly)}</span>
                           </div>
@@ -408,7 +413,7 @@ function BlockStat({ label, value, color }: { label: string; value: number; colo
     : 'bg-phosphor-mint/[0.05] border-phosphor-mint/25';
   return (
     <div className={`p-2.5 rounded-sm border ${bg}`}>
-      <div className="term-label-plain mb-1">▸ {label}</div>
+      <div className="term-label-plain mb-1">{label}</div>
       <FitNumber value={formatCurrency(value)} baseSize={18} minSize={12} className={`${cls} font-medium`} />
     </div>
   );

@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import TabBar from '@/components/TabBar';
 import Panel, { CardHeader, FitNumber, StatusDot, ProgressBar } from '@/components/GlassCard';
-import { WealthLineGraph, DrawdownBands } from '@/components/Charts';
+import { WealthLineGraph } from '@/components/Charts';
 import PaydayModal from '@/components/PaydayModal';
 import { useBudget } from '@/lib/context';
 import {
@@ -21,6 +21,11 @@ import {
   yearsInRetirement,
   calculateSharedHousing,
 } from '@/lib/calculations';
+import {
+  nzMedianNetWorthForAge,
+  masseyBracket,
+  NZ_AVG_SAVINGS_RATE,
+} from '@/lib/benchmarks';
 
 export default function Dashboard() {
   const { store, isLoaded } = useBudget();
@@ -173,33 +178,37 @@ export default function Dashboard() {
                 </div>
               </Panel>
 
-              {/* Retirement drawdown */}
+              {/* Retirement drawdown — deplete + perpetual + optional super */}
               <Panel brackets glow>
                 <CardHeader title={`Retirement · Age ${settings.retirementAge}→${settings.lifeExpectancy}`} subtitle={`${yrsToRet} yr horizon · ${yrsInRet} yr drawdown`} />
                 {drawdown && drawdown.portfolioAtRetirementReal > 0 ? (
                   <>
                     <div className="mb-3">
-                      <div className="font-mono text-[10px] tracking-[0.18em] uppercase text-ink-500">▸ Weekly draw (real)</div>
+                      <div className="term-label-plain mb-0.5">Deplete · to age {settings.lifeExpectancy}</div>
                       <FitNumber
-                        value={formatCurrency(drawdown.expectedWeekly)}
-                        baseSize={42}
-                        minSize={22}
+                        value={`${formatCurrency(drawdown.expectedWeekly + drawdown.nzSuperWeekly)}/wk`}
+                        baseSize={34}
+                        minSize={18}
                         className="text-phosphor-amber mono-num-glow font-medium"
                       />
-                      <div className="font-mono text-[10px] tracking-[0.16em] uppercase text-ink-500 mt-1">
-                        ≈ {formatCurrency(drawdown.monthlyDrawdownReal)}/mo · {formatCurrencyCompact(drawdown.portfolioAtRetirementReal)} portfolio
-                      </div>
                     </div>
-                    <DrawdownBands
-                      conservative={drawdown.conservativeWeekly}
-                      expected={drawdown.expectedWeekly}
-                      optimistic={drawdown.optimisticWeekly}
-                      format={(n) => formatCurrency(n)}
-                    />
+                    <div className="pt-3 border-t border-graphite-600 mb-3">
+                      <div className="term-label-plain mb-0.5">Perpetual · live off returns</div>
+                      <FitNumber
+                        value={`${formatCurrency(drawdown.perpetualWeekly + drawdown.nzSuperWeekly)}/wk`}
+                        baseSize={28}
+                        minSize={16}
+                        className="text-phosphor-mint mono-num-glow-mint font-medium"
+                      />
+                    </div>
+                    <div className="font-mono text-[10px] tracking-[0.14em] uppercase text-ink-500 leading-relaxed">
+                      PORTFOLIO {formatCurrencyCompact(drawdown.portfolioAtRetirementReal)} REAL
+                      {drawdown.nzSuperEligible && ` · +SUPER ${formatCurrency(drawdown.nzSuperWeekly)}/WK`}
+                    </div>
                   </>
                 ) : (
                   <p className="text-sm text-ink-500 py-4">
-                    Add investments or property to project a sustainable drawdown.
+                    Add investments to project a sustainable drawdown. House stays a house.
                   </p>
                 )}
               </Panel>
@@ -266,6 +275,20 @@ export default function Dashboard() {
                 )}
               </Panel>
             </div>
+
+            {/* Reality Check — NZ benchmarks */}
+            {settings.showBenchmarks && currentAge > 0 && (
+              <RealityCheck
+                age={currentAge}
+                netWealth={currentNetWealth}
+                weeklyIncome={settings.afterTaxWeeklyIncome}
+                weeklySavings={weeklyByCategory.savings}
+                drawdownDeplete={drawdown ? drawdown.expectedWeekly + drawdown.nzSuperWeekly : 0}
+                drawdownPerpetual={drawdown ? drawdown.perpetualWeekly + drawdown.nzSuperWeekly : 0}
+                masseyNoFrills={settings.masseyTwoPersonNoFrills}
+                masseyChoices={settings.masseyTwoPersonChoices}
+              />
+            )}
 
             {/* Wealth trajectory */}
             {wealthProjectionData.length > 0 && (
@@ -343,7 +366,7 @@ function CategoryStat({ label, value, color }: { label: string; value: number; c
   const cls = color === 'red' ? 'text-phosphor-red' : color === 'amber' ? 'text-phosphor-amber' : 'text-phosphor-mint';
   return (
     <div>
-      <div className="term-label-plain mb-1">▸ {label}</div>
+      <div className="term-label-plain mb-1">{label}</div>
       <FitNumber
         value={formatCurrency(value)}
         baseSize={20}
@@ -358,7 +381,7 @@ function SplitStat({ label, value, ratio, color }: { label: string; value: numbe
   const cls = color === 'cyan' ? 'text-phosphor-cyan' : color === 'violet' ? 'text-phosphor-violet' : 'text-phosphor-amber';
   return (
     <div>
-      <div className="term-label-plain mb-1 truncate">▸ {label}</div>
+      <div className="term-label-plain mb-1">{label}</div>
       <FitNumber
         value={formatCurrency(value)}
         baseSize={22}
@@ -368,6 +391,164 @@ function SplitStat({ label, value, ratio, color }: { label: string; value: numbe
       <div className="font-mono text-[10px] text-ink-500 tracking-[0.14em] mt-1">
         {ratio != null ? `${(ratio * 100).toFixed(0)}% · ` : ''}per week
       </div>
+    </div>
+  );
+}
+
+function RealityCheck({
+  age,
+  netWealth,
+  weeklyIncome,
+  weeklySavings,
+  drawdownDeplete,
+  drawdownPerpetual,
+  masseyNoFrills,
+  masseyChoices,
+}: {
+  age: number;
+  netWealth: number;
+  weeklyIncome: number;
+  weeklySavings: number;
+  drawdownDeplete: number;
+  drawdownPerpetual: number;
+  masseyNoFrills: number;
+  masseyChoices: number;
+}) {
+  const median = nzMedianNetWorthForAge(age);
+  const wealthDelta = median > 0 ? ((netWealth - median) / median) * 100 : 0;
+  const wealthAhead = netWealth >= median;
+
+  const savingsRate = weeklyIncome > 0 ? weeklySavings / weeklyIncome : 0;
+  const avgRate = NZ_AVG_SAVINGS_RATE.rate;
+  const savingsAhead = savingsRate >= avgRate;
+
+  const masseyMax = Math.max(drawdownDeplete, masseyChoices) * 1.1;
+  const bracket = drawdownDeplete > 0
+    ? masseyBracket(drawdownDeplete, masseyNoFrills, masseyChoices)
+    : null;
+
+  return (
+    <Panel brackets>
+      <CardHeader title="Reality Check · NZ Benchmarks" subtitle="Approximate — verify in Config" />
+
+      <div className="space-y-4">
+        {/* Net wealth vs median */}
+        <div>
+          <div className="flex justify-between items-baseline gap-3 mb-1.5">
+            <span className="term-label-plain">Net wealth vs NZ median (age {age})</span>
+            <span className={`mono-num text-sm font-medium ${wealthAhead ? 'text-phosphor-mint' : 'text-phosphor-amber'}`}>
+              {wealthAhead ? '+' : ''}{wealthDelta.toFixed(0)}%
+            </span>
+          </div>
+          <div className="flex justify-between font-mono text-[10px] tracking-[0.14em] uppercase text-ink-500 mb-1.5">
+            <span>YOU {formatCurrencyCompact(netWealth)}</span>
+            <span>MEDIAN {formatCurrencyCompact(median)}</span>
+          </div>
+          <BenchmarkBar
+            value={netWealth}
+            reference={median}
+            valueColor={wealthAhead ? '#7FF0BD' : '#FFB453'}
+          />
+        </div>
+
+        {/* Savings rate vs NZ avg */}
+        <div>
+          <div className="flex justify-between items-baseline gap-3 mb-1.5">
+            <span className="term-label-plain">Savings rate vs NZ avg</span>
+            <span className={`mono-num text-sm font-medium ${savingsAhead ? 'text-phosphor-mint' : 'text-phosphor-amber'}`}>
+              {(savingsRate * 100).toFixed(0)}%
+            </span>
+          </div>
+          <div className="flex justify-between font-mono text-[10px] tracking-[0.14em] uppercase text-ink-500 mb-1.5">
+            <span>YOU {(savingsRate * 100).toFixed(0)}%</span>
+            <span>NZ AVG {(avgRate * 100).toFixed(0)}%</span>
+          </div>
+          <BenchmarkBar
+            value={savingsRate}
+            reference={Math.max(avgRate, savingsRate, 0.001)}
+            valueColor={savingsAhead ? '#7FF0BD' : '#FFB453'}
+            normaliseAgainst={Math.max(savingsRate, avgRate) * 1.4}
+          />
+        </div>
+
+        {/* Drawdown vs Massey */}
+        {bracket && drawdownDeplete > 0 && (
+          <div>
+            <div className="flex justify-between items-baseline gap-3 mb-1.5">
+              <span className="term-label-plain">Retirement draw vs Massey</span>
+              <span className={`mono-num text-sm font-medium ${
+                bracket.bracket === 'above' || bracket.bracket === 'choices'
+                  ? 'text-phosphor-mint'
+                  : bracket.bracket === 'between' || bracket.bracket === 'no_frills'
+                  ? 'text-phosphor-amber'
+                  : 'text-phosphor-red'
+              }`}>
+                {bracket.label}
+              </span>
+            </div>
+            <div className="flex justify-between font-mono text-[10px] tracking-[0.14em] uppercase text-ink-500 mb-1.5">
+              <span>YOU {formatCurrency(drawdownDeplete)}/WK</span>
+              <span>NF {formatCurrency(masseyNoFrills)} · CH {formatCurrency(masseyChoices)}</span>
+            </div>
+            <div className="relative h-2 bg-graphite-700 rounded-sm overflow-hidden">
+              {/* No-frills marker */}
+              <span className="absolute top-0 bottom-0 w-px bg-phosphor-amber/60" style={{ left: `${Math.min(100, (masseyNoFrills / masseyMax) * 100)}%` }} />
+              {/* Choices marker */}
+              <span className="absolute top-0 bottom-0 w-px bg-phosphor-mint/60" style={{ left: `${Math.min(100, (masseyChoices / masseyMax) * 100)}%` }} />
+              {/* Your position */}
+              <span
+                className="absolute top-0 bottom-0 w-1 rounded-sm"
+                style={{
+                  left: `${Math.min(100, (drawdownDeplete / masseyMax) * 100)}%`,
+                  background: '#FFB453',
+                  boxShadow: '0 0 6px #FFB453',
+                }}
+              />
+            </div>
+            <div className="font-mono text-[10px] tracking-[0.14em] uppercase text-ink-500 mt-2 leading-relaxed">
+              {drawdownPerpetual > 0 && drawdownPerpetual !== drawdownDeplete && (
+                <>▸ PERPETUAL MODE: {formatCurrency(drawdownPerpetual)}/WK</>
+              )}
+            </div>
+          </div>
+        )}
+
+        <div className="font-mono text-[10px] tracking-[0.14em] uppercase text-ink-500 leading-relaxed pt-1 border-t border-graphite-600">
+          ▸ Source: Stats NZ Household Net Worth 2021 · Massey Retirement Expenditure Guidelines · update figures in Config.
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+function BenchmarkBar({
+  value,
+  reference,
+  valueColor,
+  normaliseAgainst,
+}: {
+  value: number;
+  reference: number;
+  valueColor: string;
+  normaliseAgainst?: number;
+}) {
+  const max = normaliseAgainst ?? Math.max(value, reference) * 1.25;
+  const valPct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
+  const refPct = max > 0 ? Math.min(100, (reference / max) * 100) : 0;
+  return (
+    <div className="relative h-2 bg-graphite-700 rounded-sm overflow-hidden">
+      <span
+        className="absolute top-0 bottom-0 w-px bg-ink-300"
+        style={{ left: `${refPct}%`, opacity: 0.7 }}
+      />
+      <span
+        className="absolute top-0 bottom-0 rounded-sm"
+        style={{
+          width: `${valPct}%`,
+          background: valueColor,
+          boxShadow: `0 0 6px ${valueColor}`,
+        }}
+      />
     </div>
   );
 }

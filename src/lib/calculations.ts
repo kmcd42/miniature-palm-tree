@@ -871,22 +871,62 @@ export function calculateWeeklyDrawdown(
 
 // Drawdown projection bundle for display
 export interface DrawdownProjection {
-  portfolioAtRetirementReal: number;
-  weeklyDrawdownReal: number;
+  portfolioAtRetirementReal: number;     // Investments only — house is house, not liquidity
+  yearsCovered: number;
+
+  // "Deplete" mode — spend it down to zero by lifeExpectancy
+  weeklyDrawdownReal: number;            // = expectedWeekly, kept for compatibility
   monthlyDrawdownReal: number;
   yearlyDrawdownReal: number;
-  yearsCovered: number;
-  // Sensitivity bands (conservative / expected / optimistic real returns)
-  conservativeWeekly: number;
-  expectedWeekly: number;
-  optimisticWeekly: number;
+  conservativeWeekly: number;            // SWR − 1.5%
+  expectedWeekly: number;                // SWR
+  optimisticWeekly: number;              // SWR + 1.5%
+
+  // "Perpetual" mode — live off real returns, principal preserved
+  perpetualWeekly: number;
+  perpetualMonthly: number;
+  realReturnRate: number;                // The annual real return used (decimal)
+
+  // NZ Super supplement (optional, toggle-controlled)
+  nzSuperWeekly: number;                 // 0 if disabled or not yet eligible at retirement
+  nzSuperEligible: boolean;              // true if user reaches super age by/at retirement
+  nzSuperEligibilityAge: number;
+}
+
+// Weighted average real return across investments (annual decimal).
+// Falls back to SWR if no investment data.
+export function weightedAvgRealReturn(
+  investments: Investment[],
+  inflationRate: number,
+  fallbackSwrPct: number,
+): number {
+  const totalContrib = investments.reduce((s, i) => s + i.weeklyContribution, 0);
+  const totalValue = investments.reduce((s, i) => s + i.currentValue, 0);
+
+  let weighted = 0;
+  if (totalContrib > 0) {
+    for (const inv of investments) {
+      const w = inv.weeklyContribution / totalContrib;
+      weighted += w * (inv.expectedReturnRate - (inv.feeRate || 0));
+    }
+  } else if (totalValue > 0) {
+    for (const inv of investments) {
+      const w = inv.currentValue / totalValue;
+      weighted += w * (inv.expectedReturnRate - (inv.feeRate || 0));
+    }
+  } else {
+    // No data — assume SWR equals real return (a common modelling shortcut)
+    return Math.max(0, fallbackSwrPct / 100);
+  }
+
+  return Math.max(0, (weighted - inflationRate) / 100);
 }
 
 export function generateDrawdownProjection(
   settings: UserSettings,
   investments: Investment[],
   mortgages: Mortgage[],
-  propertyValue: number,
+  _propertyValue: number,  // kept for signature stability; ignored on purpose
 ): DrawdownProjection {
   const currentAge = getCurrentAgeFractional(settings);
   const projection = projectWealthAtAge(
@@ -897,33 +937,45 @@ export function generateDrawdownProjection(
     settings.inflationRate,
   );
 
-  // Real liquid portfolio at retirement = investments(real) + equity(real)
-  // (Equity assumed to grow with inflation so equity_real ≈ today's equity. Already real-priced in projection.)
-  const equityNow = Math.max(0, propertyValue - mortgages.reduce((s, m) => s + m.principal, 0));
-  const portfolioReal = projection.real + equityNow; // equity considered roughly inflation-flat in real terms
+  // House is house — only liquid investments fund the drawdown.
+  const portfolioReal = projection.real;
 
   const yearsInRet = yearsInRetirement(settings);
 
-  // Use the user's stated SWR as the "expected" rate, with ±1.5% bands.
   const swr = (settings.safeWithdrawalRate ?? 4) / 100;
   const conservativeRate = Math.max(0, swr - 0.015);
   const optimisticRate = swr + 0.015;
 
-  // Pure SWR: portfolio * rate. Annuity formula is also useful but the
-  // industry-standard SWR is simpler and what most retirement guides cite.
   const swrWeekly = (rate: number) => (portfolioReal * rate) / 52;
-
   const expectedWeekly = swrWeekly(swr);
+
+  // Perpetual mode: live off real returns. Principal preserved (in real terms).
+  const realReturnRate = weightedAvgRealReturn(investments, settings.inflationRate, settings.safeWithdrawalRate);
+  const perpetualWeekly = (portfolioReal * realReturnRate) / 52;
+
+  // NZ Super
+  const nzEligAge = settings.nzSuperEligibilityAge ?? 65;
+  const nzEligible = settings.includeNzSuper && settings.retirementAge >= nzEligAge;
+  const nzSuperWeekly = nzEligible ? (settings.nzSuperWeeklyAmount ?? 0) : 0;
 
   return {
     portfolioAtRetirementReal: portfolioReal,
+    yearsCovered: yearsInRet,
+
     weeklyDrawdownReal: expectedWeekly,
     monthlyDrawdownReal: expectedWeekly * (52 / 12),
     yearlyDrawdownReal: expectedWeekly * 52,
-    yearsCovered: yearsInRet,
     conservativeWeekly: swrWeekly(conservativeRate),
     expectedWeekly,
     optimisticWeekly: swrWeekly(optimisticRate),
+
+    perpetualWeekly,
+    perpetualMonthly: perpetualWeekly * (52 / 12),
+    realReturnRate,
+
+    nzSuperWeekly,
+    nzSuperEligible: nzEligible,
+    nzSuperEligibilityAge: nzEligAge,
   };
 }
 
@@ -1032,7 +1084,9 @@ export function generateInsights(store: BudgetStore): Insight[] {
   const uncommittedPct = (uncommitted / settings.afterTaxWeeklyIncome) * 100;
 
   // 1) Cashflow status
-  if (uncommitted < 0) {
+  // Treat a balanced (zero-based) budget as a positive outcome, not a warning.
+  const balancedThreshold = Math.max(2, settings.afterTaxWeeklyIncome * 0.005); // within $2 or 0.5%
+  if (uncommitted < -1) {
     insights.push({
       id: 'overcommitted',
       severity: 'critical',
@@ -1042,14 +1096,13 @@ export function generateInsights(store: BudgetStore): Insight[] {
       actionHref: '/budget',
       actionLabel: 'Review budget',
     });
-  } else if (uncommittedPct < 5) {
+  } else if (Math.abs(uncommitted) <= balancedThreshold) {
     insights.push({
-      id: 'tight',
-      severity: 'warn',
-      label: 'CASHFLOW · TIGHT',
-      headline: `Only ${formatCurrency(uncommitted)}/wk uncommitted (${uncommittedPct.toFixed(1)}%).`,
-      detail: 'Little slack for unplanned spending. Consider trimming costs.',
-      actionHref: '/budget',
+      id: 'balanced',
+      severity: 'positive',
+      label: 'CASHFLOW · BALANCED',
+      headline: `Every dollar assigned — uncommitted ${formatCurrency(uncommitted)}/wk.`,
+      detail: 'Zero-based budget. The plan and the income agree.',
     });
   } else if (uncommittedPct > 20 && byCat.savings / settings.afterTaxWeeklyIncome < 0.15) {
     insights.push({
@@ -1102,32 +1155,40 @@ export function generateInsights(store: BudgetStore): Insight[] {
 
   // 3) Retirement drawdown
   const totalPropertyValue = mortgages.reduce((s, m) => s + (m.propertyValue || 0), 0);
-  if (investments.length > 0 || mortgages.length > 0) {
+  if (investments.length > 0) {
     const dd = generateDrawdownProjection(settings, investments, mortgages, totalPropertyValue);
     if (dd.portfolioAtRetirementReal > 0) {
+      const depleteTotal = dd.expectedWeekly + dd.nzSuperWeekly;
+      const perpetualTotal = dd.perpetualWeekly + dd.nzSuperWeekly;
+      const superTag = dd.nzSuperEligible
+        ? ` (incl. NZ Super ${formatCurrency(dd.nzSuperWeekly)}/wk)`
+        : '';
       insights.push({
         id: 'drawdown',
         severity: 'info',
         label: `RETIREMENT · AGE ${settings.retirementAge}`,
-        headline: `Trajectory: draw ${formatCurrency(dd.weeklyDrawdownReal)}/wk to age ${settings.lifeExpectancy} (real).`,
-        detail: `Portfolio ${formatCurrencyCompact(dd.portfolioAtRetirementReal)} · range ${formatCurrency(dd.conservativeWeekly)}–${formatCurrency(dd.optimisticWeekly)}/wk.`,
+        headline: `Deplete: ${formatCurrency(depleteTotal)}/wk to age ${settings.lifeExpectancy} · Perpetual: ${formatCurrency(perpetualTotal)}/wk forever.${superTag}`,
+        detail: `Portfolio ${formatCurrencyCompact(dd.portfolioAtRetirementReal)} real · real return ${(dd.realReturnRate * 100).toFixed(1)}%/yr.`,
         actionHref: '/wealth',
         actionLabel: 'Run projection',
       });
     }
   }
 
-  // 4) Partner contribution summary (when shared housing is enabled)
+  // 4) Household contribution summary — focus on % of combined income going
+  //    to shared expenses, which is the actually-useful number.
   if (sharedHousing?.enabled && sharedHousing.partnerWeeklyIncome > 0 && sharedHousing.expenses.length > 0) {
     const calc = calculateSharedHousing(sharedHousing, settings.afterTaxWeeklyIncome);
-    const partnerName = sharedHousing.partnerName || 'Partner';
-    insights.push({
-      id: 'partner',
-      severity: 'info',
-      label: 'SHARED · HOUSEHOLD',
-      headline: `${partnerName} contributes ${formatCurrency(calc.partnerShare)}/wk to housing.`,
-      detail: `Your share: ${formatCurrency(calc.yourShare)}/wk (${((calc.yourShare / calc.totalWeeklyExpenses) * 100).toFixed(0)}% of household).`,
-    });
+    if (calc.combinedWeeklyIncome > 0) {
+      const householdPct = (calc.totalWeeklyExpenses / calc.combinedWeeklyIncome) * 100;
+      insights.push({
+        id: 'household',
+        severity: 'info',
+        label: 'SHARED · HOUSEHOLD',
+        headline: `${householdPct.toFixed(1)}% of combined income on shared expenses (${formatCurrency(calc.totalWeeklyExpenses)}/wk).`,
+        detail: `Combined income ${formatCurrency(calc.combinedWeeklyIncome)}/wk · your share ${formatCurrency(calc.yourShare)}/wk.`,
+      });
+    }
   }
 
   // 5) Mortgage payoff

@@ -32,6 +32,14 @@ function migrateSettings(raw: Partial<UserSettings> & { age?: number }): UserSet
   if (typeof merged.safeWithdrawalRate !== 'number') merged.safeWithdrawalRate = 4.0;
   if (typeof merged.retirementAge !== 'number') merged.retirementAge = 67;
 
+  // v2 additions
+  if (typeof merged.includeNzSuper !== 'boolean') merged.includeNzSuper = false;
+  if (typeof merged.nzSuperWeeklyAmount !== 'number') merged.nzSuperWeeklyAmount = 804;
+  if (typeof merged.nzSuperEligibilityAge !== 'number') merged.nzSuperEligibilityAge = 65;
+  if (typeof merged.showBenchmarks !== 'boolean') merged.showBenchmarks = true;
+  if (typeof merged.masseyTwoPersonNoFrills !== 'number') merged.masseyTwoPersonNoFrills = 902;
+  if (typeof merged.masseyTwoPersonChoices !== 'number') merged.masseyTwoPersonChoices = 1533;
+
   return merged;
 }
 
