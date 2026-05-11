@@ -1,4 +1,4 @@
-const CACHE_NAME = 'budget-clarity-v1';
+const CACHE_NAME = 'compound-aether-v2';
 const STATIC_ASSETS = [
   '/',
   '/budget',

@@ -2,10 +2,10 @@
 
 import React, { useState, useRef } from 'react';
 import TabBar from '@/components/TabBar';
-import GlassCard, { CardHeader } from '@/components/GlassCard';
+import Panel, { CardHeader, StatusDot } from '@/components/GlassCard';
 import { useBudget } from '@/lib/context';
 import { exportData, importData } from '@/lib/storage';
-import { formatCurrency } from '@/lib/calculations';
+import { formatCurrency, getCurrentAge } from '@/lib/calculations';
 
 export default function SettingsPage() {
   const { store, dispatch, isLoaded } = useBudget();
@@ -16,15 +16,14 @@ export default function SettingsPage() {
 
   if (!isLoaded) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="glass-card p-8">
-          <div className="shimmer w-32 h-6 rounded" />
-        </div>
-      </div>
+      <main className="min-h-screen flex items-center justify-center">
+        <div className="font-mono text-xs tracking-[0.2em] text-phosphor-amber caret-blink">LOADING CFG MODULE</div>
+      </main>
     );
   }
 
   const { settings } = store;
+  const derivedAge = getCurrentAge(settings);
 
   const handleExport = () => {
     const dataStr = exportData();
@@ -32,7 +31,7 @@ export default function SettingsPage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `budget-clarity-backup-${new Date().toISOString().split('T')[0]}.json`;
+    link.download = `compound-backup-${new Date().toISOString().split('T')[0]}.json`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -41,14 +40,11 @@ export default function SettingsPage() {
     setTimeout(() => setShowExportSuccess(false), 3000);
   };
 
-  const handleImportClick = () => {
-    fileInputRef.current?.click();
-  };
+  const handleImportClick = () => { fileInputRef.current?.click(); };
 
   const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     const reader = new FileReader();
     reader.onload = (event) => {
       const content = event.target?.result as string;
@@ -59,160 +55,156 @@ export default function SettingsPage() {
         setImportError('');
         setTimeout(() => setShowImportSuccess(false), 3000);
       } else {
-        setImportError('Failed to import data. Please check the file format.');
+        setImportError('Failed to import data. Check the file format.');
       }
     };
     reader.readAsText(file);
-
-    // Reset input
     e.target.value = '';
   };
 
   const handleClearData = () => {
-    if (confirm('Are you sure you want to delete all data? This cannot be undone!')) {
-      if (confirm('Really delete everything? Export a backup first!')) {
+    if (confirm('Delete ALL data? Export a backup first!')) {
+      if (confirm('Really delete everything?')) {
         localStorage.clear();
         window.location.reload();
       }
     }
   };
 
-  const updateSetting = (key: keyof typeof settings, value: number | string) => {
-    dispatch({
-      type: 'UPDATE_SETTINGS',
-      payload: { [key]: value },
-    });
+  const updateSetting = (key: keyof typeof settings, value: number | string | undefined) => {
+    dispatch({ type: 'UPDATE_SETTINGS', payload: { [key]: value } });
   };
 
   return (
     <main className="min-h-screen pb-24 safe-top">
-      <div className="max-w-2xl mx-auto px-4 py-6">
-        {/* Header */}
-        <header className="mb-6">
-          <h1 className="text-2xl font-bold text-white">Settings</h1>
-          <p className="text-white/70 text-sm">Configure your budget</p>
+      <div className="max-w-2xl mx-auto px-4 py-5">
+
+        <header className="mb-5">
+          <div className="font-mono text-[10px] tracking-[0.24em] text-phosphor-amber/80 uppercase flex items-center gap-2">
+            <StatusDot color="amber" pulse /> CONFIG · SYSTEM PARAMETERS
+          </div>
+          <h1 className="font-serif text-[36px] leading-none text-ink-100 mt-1">
+            Config<span className="text-phosphor-amber">.</span>
+          </h1>
         </header>
 
-        {/* Success Messages */}
         {showExportSuccess && (
-          <div className="mb-4 p-3 rounded-ios bg-ios-green/20 text-ios-green text-sm">
-            Data exported successfully!
+          <div className="mb-4 px-3 py-2 border border-phosphor-mint/40 bg-phosphor-mint/[0.06] rounded-sm font-mono text-[11px] tracking-[0.14em] uppercase text-phosphor-mint">
+            ▸ DATA EXPORTED
           </div>
         )}
         {showImportSuccess && (
-          <div className="mb-4 p-3 rounded-ios bg-ios-green/20 text-ios-green text-sm">
-            Data imported successfully!
+          <div className="mb-4 px-3 py-2 border border-phosphor-mint/40 bg-phosphor-mint/[0.06] rounded-sm font-mono text-[11px] tracking-[0.14em] uppercase text-phosphor-mint">
+            ▸ DATA IMPORTED
           </div>
         )}
         {importError && (
-          <div className="mb-4 p-3 rounded-ios bg-ios-red/20 text-ios-red text-sm">
-            {importError}
+          <div className="mb-4 px-3 py-2 border border-phosphor-red/40 bg-phosphor-red/[0.06] rounded-sm font-mono text-[11px] tracking-[0.14em] uppercase text-phosphor-red">
+            ▸ {importError}
           </div>
         )}
 
-        <div className="space-y-6">
-          {/* Income Settings */}
-          <GlassCard>
-            <CardHeader title="Income" subtitle="Your after-tax weekly income" />
+        <div className="space-y-5">
+
+          {/* Income */}
+          <Panel brackets>
+            <CardHeader title="Income" subtitle="After-tax weekly take-home" />
+            <div>
+              <label className="term-label-plain block mb-1.5">▸ After-tax weekly income</label>
+              <input
+                type="number"
+                value={settings.afterTaxWeeklyIncome || ''}
+                onChange={(e) => updateSetting('afterTaxWeeklyIncome', parseFloat(e.target.value) || 0)}
+                placeholder="Your weekly take-home"
+                step="0.01" min="0"
+                className="term-input"
+              />
+              <p className="text-[11px] text-ink-500 mt-1.5 font-mono tracking-[0.14em] uppercase">
+                ▸ MONTHLY {formatCurrency((settings.afterTaxWeeklyIncome * 52) / 12)} · YEARLY {formatCurrency(settings.afterTaxWeeklyIncome * 52)}
+              </p>
+            </div>
+          </Panel>
+
+          {/* Personal */}
+          <Panel brackets>
+            <CardHeader title="Personal · Projection Inputs" subtitle="Drives retirement drawdown" />
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  After-Tax Weekly Income
-                </label>
+                <label className="term-label-plain block mb-1.5">▸ Date of birth</label>
                 <input
-                  type="number"
-                  value={settings.afterTaxWeeklyIncome || ''}
-                  onChange={(e) => updateSetting('afterTaxWeeklyIncome', parseFloat(e.target.value) || 0)}
-                  placeholder="Enter your weekly take-home pay"
-                  step="0.01"
-                  min="0"
-                  className="ios-input"
+                  type="date"
+                  value={settings.dateOfBirth || ''}
+                  onChange={(e) => updateSetting('dateOfBirth', e.target.value || undefined)}
+                  className="term-input"
+                  max={new Date().toISOString().split('T')[0]}
                 />
-                <p className="text-xs text-gray-500 mt-1">
-                  Monthly: {formatCurrency((settings.afterTaxWeeklyIncome * 52) / 12)} |
-                  Yearly: {formatCurrency(settings.afterTaxWeeklyIncome * 52)}
+                <p className="text-[11px] text-ink-500 mt-1.5 font-mono tracking-[0.14em] uppercase">
+                  ▸ CURRENT AGE {settings.dateOfBirth ? `${derivedAge} YR` : 'NOT SET'}
                 </p>
               </div>
-            </div>
-          </GlassCard>
 
-          {/* Personal Settings */}
-          <GlassCard>
-            <CardHeader title="Personal" subtitle="Used for projections" />
-
-            <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Current Age
-                  </label>
-                  <input
-                    type="number"
-                    value={settings.age || ''}
-                    onChange={(e) => updateSetting('age', parseInt(e.target.value) || 0)}
-                    placeholder="28"
-                    min="18"
-                    max="100"
-                    className="ios-input"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Retirement Age
-                  </label>
+                  <label className="term-label-plain block mb-1.5">▸ Retirement age</label>
                   <input
                     type="number"
                     value={settings.retirementAge || ''}
                     onChange={(e) => updateSetting('retirementAge', parseInt(e.target.value) || 0)}
-                    placeholder="70"
-                    min="40"
-                    max="100"
-                    className="ios-input"
+                    placeholder="67"
+                    min="40" max="100"
+                    className="term-input"
                   />
+                </div>
+                <div>
+                  <label className="term-label-plain block mb-1.5">▸ Life expectancy</label>
+                  <input
+                    type="number"
+                    value={settings.lifeExpectancy || ''}
+                    onChange={(e) => updateSetting('lifeExpectancy', parseInt(e.target.value) || 0)}
+                    placeholder="90"
+                    min="60" max="120"
+                    className="term-input"
+                  />
+                  <p className="text-[11px] text-ink-500 mt-1">Drives drawdown horizon</p>
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Assumed Inflation Rate %
-                </label>
-                <input
-                  type="number"
-                  value={settings.inflationRate || ''}
-                  onChange={(e) => updateSetting('inflationRate', parseFloat(e.target.value) || 0)}
-                  placeholder="2.5"
-                  step="0.1"
-                  min="0"
-                  max="20"
-                  className="ios-input"
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Used to calculate real (inflation-adjusted) future values
-                </p>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="term-label-plain block mb-1.5">▸ Inflation %/yr</label>
+                  <input
+                    type="number"
+                    value={settings.inflationRate || ''}
+                    onChange={(e) => updateSetting('inflationRate', parseFloat(e.target.value) || 0)}
+                    placeholder="2.5"
+                    step="0.1" min="0" max="20"
+                    className="term-input"
+                  />
+                  <p className="text-[11px] text-ink-500 mt-1">Real-dollar projection</p>
+                </div>
+                <div>
+                  <label className="term-label-plain block mb-1.5">▸ Safe withdrawal rate %</label>
+                  <input
+                    type="number"
+                    value={settings.safeWithdrawalRate || ''}
+                    onChange={(e) => updateSetting('safeWithdrawalRate', parseFloat(e.target.value) || 0)}
+                    placeholder="4.0"
+                    step="0.1" min="1" max="10"
+                    className="term-input"
+                  />
+                  <p className="text-[11px] text-ink-500 mt-1">Default 4% (Trinity study)</p>
+                </div>
               </div>
             </div>
-          </GlassCard>
+          </Panel>
 
-          {/* Data Management */}
-          <GlassCard>
-            <CardHeader title="Data" subtitle="Backup and restore" />
-
-            <div className="space-y-3">
-              <button
-                onClick={handleExport}
-                className="ios-button-secondary w-full"
-              >
-                Export Data (JSON)
-              </button>
-
-              <button
-                onClick={handleImportClick}
-                className="ios-button-secondary w-full"
-              >
-                Import Data
-              </button>
-
+          {/* Data */}
+          <Panel brackets>
+            <CardHeader title="Data · Backup &amp; Restore" />
+            <div className="space-y-2.5">
+              <button onClick={handleExport} className="term-btn-ghost w-full">▸ Export Data (JSON)</button>
+              <button onClick={handleImportClick} className="term-btn-ghost w-full">▸ Import Data</button>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -220,54 +212,52 @@ export default function SettingsPage() {
                 onChange={handleImportFile}
                 className="hidden"
               />
-
-              <hr className="border-gray-200 dark:border-gray-700 my-4" />
-
-              <button
-                onClick={handleClearData}
-                className="w-full px-6 py-3 rounded-ios font-semibold text-ios-red bg-ios-red/10"
-              >
-                Clear All Data
-              </button>
-              <p className="text-xs text-gray-500 text-center">
-                This permanently deletes everything. Export a backup first!
+              <div className="border-t border-graphite-600 my-3"></div>
+              <button onClick={handleClearData} className="term-btn-danger w-full">▸ Clear All Data</button>
+              <p className="text-[11px] text-ink-500 text-center font-mono tracking-[0.14em] uppercase">
+                ▸ PERMANENT · EXPORT FIRST
               </p>
             </div>
-          </GlassCard>
+          </Panel>
 
           {/* About */}
-          <GlassCard>
+          <Panel>
             <CardHeader title="About" />
-
-            <div className="space-y-2 text-sm text-gray-600 dark:text-gray-300">
-              <p><strong>Budget Clarity</strong> v1.0.0</p>
-              <p>A personal budgeting PWA focused on weekly budget thinking and long-term wealth projections.</p>
-              <p className="text-xs text-gray-500 mt-4">
-                Data stored locally on this device only. No accounts, no cloud sync.
+            <div className="space-y-2 text-sm text-ink-300">
+              <p className="font-mono text-xs tracking-[0.12em] uppercase">
+                <span className="text-phosphor-amber">COMPOUND</span> · AETHER-OS v2.0
+              </p>
+              <p className="text-xs leading-relaxed">
+                A financial terminal for weekly budget thinking, long-term wealth projection, and retirement drawdown modelling.
+              </p>
+              <p className="text-[11px] text-ink-500 mt-3 font-mono tracking-[0.14em] uppercase">
+                ▸ ALL DATA LOCAL · NO CLOUD · NO ACCOUNT
               </p>
             </div>
-          </GlassCard>
+          </Panel>
 
-          {/* PWA Install Hint */}
-          <GlassCard>
-            <CardHeader title="Install as App" />
-
-            <div className="text-sm text-gray-600 dark:text-gray-300 space-y-2">
-              <p><strong>iOS Safari:</strong></p>
-              <ol className="list-decimal list-inside space-y-1 text-xs">
-                <li>Tap the Share button</li>
-                <li>Scroll down and tap &quot;Add to Home Screen&quot;</li>
-                <li>Tap &quot;Add&quot;</li>
-              </ol>
-
-              <p className="mt-4"><strong>Android Chrome:</strong></p>
-              <ol className="list-decimal list-inside space-y-1 text-xs">
-                <li>Tap the menu (three dots)</li>
-                <li>Tap &quot;Add to Home screen&quot;</li>
-                <li>Tap &quot;Add&quot;</li>
-              </ol>
+          {/* Install */}
+          <Panel>
+            <CardHeader title="Install · Home Screen" />
+            <div className="text-sm text-ink-300 space-y-3">
+              <div>
+                <p className="font-mono text-[11px] tracking-[0.16em] uppercase text-phosphor-cyan mb-1">▸ iOS Safari</p>
+                <ol className="list-decimal list-inside space-y-0.5 text-xs text-ink-300 ml-1">
+                  <li>Tap the Share button</li>
+                  <li>&quot;Add to Home Screen&quot;</li>
+                  <li>Tap &quot;Add&quot;</li>
+                </ol>
+              </div>
+              <div>
+                <p className="font-mono text-[11px] tracking-[0.16em] uppercase text-phosphor-cyan mb-1">▸ Android Chrome</p>
+                <ol className="list-decimal list-inside space-y-0.5 text-xs text-ink-300 ml-1">
+                  <li>Tap the menu (⋮)</li>
+                  <li>&quot;Add to Home screen&quot;</li>
+                  <li>Tap &quot;Add&quot;</li>
+                </ol>
+              </div>
             </div>
-          </GlassCard>
+          </Panel>
         </div>
       </div>
 

@@ -2,8 +2,8 @@
 
 import React, { useState, useMemo } from 'react';
 import { useBudget } from '@/lib/context';
-import { formatCurrency, toWeekly, fromWeekly, buildCompleteBudgetItems } from '@/lib/calculations';
-import { Frequency } from '@/types/budget';
+import { formatCurrency, toWeekly, buildCompleteBudgetItems } from '@/lib/calculations';
+import { FitNumber } from '@/components/GlassCard';
 
 interface PaydayModalProps {
   onClose: () => void;
@@ -13,15 +13,12 @@ export default function PaydayModal({ onClose }: PaydayModalProps) {
   const { store, dispatch } = useBudget();
   const { settings, budgetItems, savingsBuckets, investments, mortgages, sharedHousing } = store;
 
-  // Pay frequency setting
   const [payFrequency, setPayFrequency] = useState<'weekly' | 'fortnightly' | 'monthly'>(
     settings.payFrequency || 'fortnightly'
   );
 
-  // Calculate amounts based on pay frequency
   const multiplier = payFrequency === 'weekly' ? 1 : payFrequency === 'fortnightly' ? 2 : 52 / 12;
 
-  // Build complete budget items including synced investments, savings buckets, and housing
   const allBudgetItems = useMemo(() =>
     buildCompleteBudgetItems(
       budgetItems,
@@ -34,65 +31,36 @@ export default function PaydayModal({ onClose }: PaydayModalProps) {
     [budgetItems, investments, savingsBuckets, mortgages, sharedHousing, settings.afterTaxWeeklyIncome]
   );
 
-  // Group budget items by category, converting to pay period amounts
-  const budgetByCategory = useMemo(() => {
-    const savings: Array<{
+  const savingsItems = useMemo(() => {
+    const out: Array<{
       id: string;
       name: string;
       weeklyAmount: number;
       periodAmount: number;
-      adjustedAmount: number;
       linkedToType?: string;
       linkedToId?: string;
     }> = [];
-
     allBudgetItems.forEach((item) => {
       if (item.category === 'savings' && !item.parentId) {
         const weeklyAmount = toWeekly(item.amount, item.frequency);
-        savings.push({
+        out.push({
           id: item.id,
           name: item.name,
           weeklyAmount,
           periodAmount: weeklyAmount * multiplier,
-          adjustedAmount: weeklyAmount * multiplier,
           linkedToType: item.linkedToType,
           linkedToId: item.linkedToId,
         });
       }
     });
-
-    return { savings };
+    return out;
   }, [allBudgetItems, multiplier]);
 
-  // State for adjusted amounts
   const [adjustments, setAdjustments] = useState<Record<string, number>>(() => {
     const initial: Record<string, number> = {};
-    budgetByCategory.savings.forEach((item) => {
-      initial[item.id] = item.periodAmount;
-    });
+    savingsItems.forEach((item) => { initial[item.id] = item.periodAmount; });
     return initial;
   });
-
-  // Calculate new balances for savings buckets
-  const newBalances = useMemo(() => {
-    const balances: Record<string, number> = {};
-
-    budgetByCategory.savings.forEach((item) => {
-      if (item.linkedToType === 'savings_bucket' && item.linkedToId) {
-        const bucket = savingsBuckets.find((b) => b.id === item.linkedToId);
-        if (bucket) {
-          balances[item.linkedToId] = bucket.currentAmount + (adjustments[item.id] || 0);
-        }
-      } else if (item.linkedToType === 'investment' && item.linkedToId) {
-        const inv = investments.find((i) => i.id === item.linkedToId);
-        if (inv) {
-          balances[item.linkedToId] = inv.currentValue + (adjustments[item.id] || 0);
-        }
-      }
-    });
-
-    return balances;
-  }, [adjustments, budgetByCategory.savings, savingsBuckets, investments]);
 
   const handleAdjustment = (id: string, delta: number) => {
     setAdjustments((prev) => ({
@@ -102,29 +70,17 @@ export default function PaydayModal({ onClose }: PaydayModalProps) {
   };
 
   const handleSubmit = () => {
-    // Update pay frequency in settings if changed
     if (payFrequency !== settings.payFrequency) {
-      dispatch({
-        type: 'UPDATE_SETTINGS',
-        payload: { payFrequency },
-      });
+      dispatch({ type: 'UPDATE_SETTINGS', payload: { payFrequency } });
     }
-
-    // Update savings buckets with new balances
-    budgetByCategory.savings.forEach((item) => {
+    savingsItems.forEach((item) => {
       const amount = adjustments[item.id] || 0;
-
       if (item.linkedToType === 'savings_bucket' && item.linkedToId) {
         const bucket = savingsBuckets.find((b) => b.id === item.linkedToId);
         if (bucket) {
           dispatch({
             type: 'UPDATE_SAVINGS_BUCKET',
-            payload: {
-              id: item.linkedToId,
-              updates: {
-                currentAmount: bucket.currentAmount + amount,
-              },
-            },
+            payload: { id: item.linkedToId, updates: { currentAmount: bucket.currentAmount + amount } },
           });
         }
       } else if (item.linkedToType === 'investment' && item.linkedToId) {
@@ -132,17 +88,11 @@ export default function PaydayModal({ onClose }: PaydayModalProps) {
         if (inv) {
           dispatch({
             type: 'UPDATE_INVESTMENT',
-            payload: {
-              id: item.linkedToId,
-              updates: {
-                currentValue: inv.currentValue + amount,
-              },
-            },
+            payload: { id: item.linkedToId, updates: { currentValue: inv.currentValue + amount } },
           });
         }
       }
     });
-
     onClose();
   };
 
@@ -154,53 +104,54 @@ export default function PaydayModal({ onClose }: PaydayModalProps) {
       <div className="payday-modal">
         <div className="payday-modal-content">
           {/* Header */}
-          <div className="p-6 border-b border-gray-200 dark:border-gray-700">
-            <div className="flex justify-between items-center">
-              <h2 className="text-xl font-bold text-gray-900 dark:text-white">Log Payday</h2>
-              <button
-                onClick={onClose}
-                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-2xl leading-none"
-              >
-                &times;
-              </button>
+          <div className="px-5 py-4 border-b border-graphite-600 flex justify-between items-center">
+            <div className="flex items-center gap-3">
+              <span className="font-mono text-[9px] tracking-[0.2em] uppercase text-phosphor-amber px-1.5 py-0.5 border border-phosphor-amber/40 rounded-sm">
+                PAY-LOG
+              </span>
+              <h2 className="font-mono text-xs tracking-[0.16em] uppercase text-ink-100">
+                LOG PAYDAY
+              </h2>
             </div>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-              Record your savings contributions for this pay period
-            </p>
+            <button onClick={onClose} className="text-ink-500 hover:text-phosphor-amber transition-colors p-1" aria-label="Close">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
           </div>
 
-          {/* Pay Frequency Selector */}
-          <div className="p-4 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700">
-            <label className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 block mb-2">
-              Pay Frequency
-            </label>
-            <div className="flex gap-2">
+          {/* Pay frequency selector */}
+          <div className="px-5 py-3 border-b border-graphite-600 bg-graphite-850">
+            <div className="font-mono text-[10px] tracking-[0.18em] uppercase text-ink-500 mb-2">
+              ▸ Pay Frequency
+            </div>
+            <div className="flex gap-1">
               {(['weekly', 'fortnightly', 'monthly'] as const).map((freq) => (
                 <button
                   key={freq}
                   onClick={() => setPayFrequency(freq)}
-                  className={`flex-1 py-2 px-3 rounded-ios text-sm font-medium transition-all ${
+                  className={`flex-1 py-2 px-2 font-mono text-[10px] tracking-[0.14em] uppercase border rounded-sm transition-all ${
                     payFrequency === freq
-                      ? 'bg-ios-blue text-white'
-                      : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+                      ? 'border-phosphor-amber text-phosphor-amber bg-phosphor-amber/8'
+                      : 'border-graphite-600 text-ink-500 hover:text-ink-300 hover:border-graphite-500'
                   }`}
                 >
-                  {freq.charAt(0).toUpperCase() + freq.slice(1)}
+                  {freq}
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Savings Items */}
-          <div className="p-4 max-h-[50vh] overflow-y-auto">
-            {budgetByCategory.savings.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                <p>No savings items in your budget.</p>
-                <p className="text-sm mt-2">Add savings items in the Budget tab to track them here.</p>
+          {/* Items */}
+          <div className="px-5 py-4 overflow-y-auto flex-1" style={{ maxHeight: '50vh' }}>
+            {savingsItems.length === 0 ? (
+              <div className="text-center py-8 text-ink-500 font-mono text-xs">
+                <p className="mb-2">NO SAVINGS ITEMS</p>
+                <p className="text-ink-700 text-[11px]">Add savings items in the Budget tab.</p>
               </div>
             ) : (
-              <div className="space-y-4">
-                {budgetByCategory.savings.map((item) => {
+              <div className="space-y-3">
+                {savingsItems.map((item) => {
                   const currentAmount = adjustments[item.id] || 0;
                   const linkedBucket = item.linkedToType === 'savings_bucket' && item.linkedToId
                     ? savingsBuckets.find((b) => b.id === item.linkedToId)
@@ -208,62 +159,44 @@ export default function PaydayModal({ onClose }: PaydayModalProps) {
                   const linkedInvestment = item.linkedToType === 'investment' && item.linkedToId
                     ? investments.find((i) => i.id === item.linkedToId)
                     : null;
+                  const newBalance = linkedBucket
+                    ? linkedBucket.currentAmount + currentAmount
+                    : linkedInvestment
+                    ? linkedInvestment.currentValue + currentAmount
+                    : currentAmount;
 
                   return (
-                    <div key={item.id} className="bg-gray-50 dark:bg-gray-800/50 rounded-ios-lg p-4">
+                    <div key={item.id} className="panel p-3">
                       <div className="flex justify-between items-start mb-3">
-                        <div>
-                          <div className="font-medium text-gray-900">{item.name}</div>
-                          <div className="text-xs text-gray-500">
-                            {formatCurrency(item.weeklyAmount)}/week
+                        <div className="min-w-0">
+                          <div className="font-medium text-ink-100 text-sm truncate">{item.name}</div>
+                          <div className="font-mono text-[10px] tracking-[0.14em] text-ink-500 uppercase mt-0.5">
+                            {formatCurrency(item.weeklyAmount)}/wk plan
                           </div>
                         </div>
                         {(linkedBucket || linkedInvestment) && (
-                          <div className="text-right">
-                            <div className="text-xs text-gray-500">New Balance</div>
-                            <div className="text-sm font-semibold text-money-green">
-                              {formatCurrency(
-                                linkedBucket
-                                  ? linkedBucket.currentAmount + currentAmount
-                                  : linkedInvestment
-                                  ? linkedInvestment.currentValue + currentAmount
-                                  : currentAmount,
-                                false
-                              )}
+                          <div className="text-right shrink-0 ml-3">
+                            <div className="font-mono text-[9px] tracking-[0.18em] text-ink-500 uppercase">New</div>
+                            <div className="font-mono text-xs text-phosphor-mint font-medium">
+                              {formatCurrency(newBalance, false)}
                             </div>
                           </div>
                         )}
                       </div>
 
-                      {/* Stepper */}
-                      <div className="flex items-center justify-center gap-4">
-                        <button
-                          onClick={() => handleAdjustment(item.id, -10)}
-                          className="stepper-btn"
-                        >
-                          -10
-                        </button>
-                        <button
-                          onClick={() => handleAdjustment(item.id, -1)}
-                          className="stepper-btn"
-                        >
-                          -
-                        </button>
-                        <div className="text-2xl font-bold money-display-large text-gray-900 min-w-[100px] text-center">
-                          {formatCurrency(currentAmount, false)}
+                      <div className="flex items-center justify-center gap-2">
+                        <button onClick={() => handleAdjustment(item.id, -10)} className="stepper-btn">−10</button>
+                        <button onClick={() => handleAdjustment(item.id, -1)} className="stepper-btn">−</button>
+                        <div className="min-w-[110px] text-center px-2">
+                          <FitNumber
+                            value={formatCurrency(currentAmount, false)}
+                            baseSize={22}
+                            minSize={14}
+                            className="text-phosphor-amber font-medium text-center"
+                          />
                         </div>
-                        <button
-                          onClick={() => handleAdjustment(item.id, 1)}
-                          className="stepper-btn"
-                        >
-                          +
-                        </button>
-                        <button
-                          onClick={() => handleAdjustment(item.id, 10)}
-                          className="stepper-btn"
-                        >
-                          +10
-                        </button>
+                        <button onClick={() => handleAdjustment(item.id, 1)} className="stepper-btn">+</button>
+                        <button onClick={() => handleAdjustment(item.id, 10)} className="stepper-btn">+10</button>
                       </div>
                     </div>
                   );
@@ -273,18 +206,14 @@ export default function PaydayModal({ onClose }: PaydayModalProps) {
           </div>
 
           {/* Footer */}
-          <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
-            <div className="flex justify-between items-center mb-4">
-              <span className="text-sm text-gray-600">Total Savings This Period</span>
-              <span className="text-xl font-bold money-display-large text-money-green">
+          <div className="px-5 py-4 border-t border-graphite-600 bg-graphite-850">
+            <div className="flex justify-between items-center mb-3">
+              <span className="font-mono text-[10px] tracking-[0.18em] uppercase text-ink-500">▸ Total this period</span>
+              <span className="mono-num text-lg text-phosphor-mint font-medium mono-num-glow-mint">
                 {formatCurrency(totalSavings, false)}
               </span>
             </div>
-            <button
-              onClick={handleSubmit}
-              className="ios-button w-full"
-              disabled={budgetByCategory.savings.length === 0}
-            >
+            <button onClick={handleSubmit} className="term-btn w-full" disabled={savingsItems.length === 0}>
               Confirm Payday
             </button>
           </div>

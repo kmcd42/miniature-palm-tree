@@ -6,6 +6,7 @@ interface BottomSheetProps {
   isOpen: boolean;
   onClose: () => void;
   title?: string;
+  code?: string; // optional terminal code shown to the left of title
   children: React.ReactNode;
 }
 
@@ -13,9 +14,9 @@ export default function BottomSheet({
   isOpen,
   onClose,
   title,
+  code,
   children,
 }: BottomSheetProps) {
-  // Prevent body scroll when sheet is open
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = 'hidden';
@@ -31,48 +32,50 @@ export default function BottomSheet({
 
   return (
     <>
-      {/* Backdrop */}
       <div
-        className="modal-backdrop animate-fadeIn"
+        className="modal-backdrop"
         onClick={onClose}
-        style={{ animation: 'fadeIn 0.2s ease-out' }}
+        style={{ animation: 'fadeIn 0.18s ease-out' }}
       />
 
-      {/* Sheet */}
       <div
-        className="bottom-sheet animate-slideUp"
-        style={{ animation: 'slideUp 0.3s ease-out' }}
+        className="bottom-sheet"
+        style={{ animation: 'slideUp 0.28s cubic-bezier(0.22, 1, 0.36, 1)' }}
       >
         <div className="sheet-handle" />
 
         {title && (
-          <div className="flex items-center justify-between px-4 pb-4 border-b border-gray-200 dark:border-gray-700">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">{title}</h2>
+          <div className="flex items-center justify-between px-5 pb-3 border-b border-graphite-600">
+            <div className="flex items-center gap-3 min-w-0">
+              {code && (
+                <span className="font-mono text-[9px] tracking-[0.2em] uppercase text-phosphor-amber px-1.5 py-0.5 border border-phosphor-amber/40 rounded-sm">
+                  {code}
+                </span>
+              )}
+              <h2 className="font-mono text-xs tracking-[0.16em] uppercase text-ink-100 truncate">
+                {title}
+              </h2>
+            </div>
             <button
               onClick={onClose}
-              className="p-2 -mr-2 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+              className="p-1.5 -mr-1 text-ink-500 hover:text-phosphor-amber transition-colors"
+              aria-label="Close"
             >
-              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
           </div>
         )}
 
-        <div className="p-4 overflow-y-auto max-h-[70vh]">
+        <div className="px-5 py-5 overflow-y-auto max-h-[70vh] text-ink-100">
           {children}
         </div>
       </div>
 
       <style jsx global>{`
-        @keyframes fadeIn {
-          from { opacity: 0; }
-          to { opacity: 1; }
-        }
-        @keyframes slideUp {
-          from { transform: translateY(100%); }
-          to { transform: translateY(0); }
-        }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
       `}</style>
     </>
   );

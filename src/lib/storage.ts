@@ -1,13 +1,51 @@
-import { BudgetStore, INITIAL_STORE } from '@/types/budget';
+import { BudgetStore, INITIAL_STORE, UserSettings, DEFAULT_SETTINGS } from '@/types/budget';
 
 const STORAGE_KEY = 'compound-data';
 const LEGACY_STORAGE_KEY = 'budget-clarity-data';
-const STORAGE_VERSION = 1;
+const STORAGE_VERSION = 2;
 
 interface StorageWrapper {
   version: number;
   data: BudgetStore;
   lastUpdated: number;
+}
+
+// Migrate a settings object that may be from v1 (age-based) to v2 (DOB-based)
+function migrateSettings(raw: Partial<UserSettings> & { age?: number }): UserSettings {
+  const merged: UserSettings = {
+    ...DEFAULT_SETTINGS,
+    ...raw,
+  };
+
+  // If we have age but no dateOfBirth, derive a plausible DOB from age.
+  // We don't know their birthday, so set it to today's date that many years ago.
+  if (!merged.dateOfBirth && typeof raw.age === 'number' && raw.age > 0) {
+    const today = new Date();
+    const year = today.getFullYear() - raw.age;
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    merged.dateOfBirth = `${year}-${month}-${day}`;
+  }
+
+  // Fill defaults for new fields if missing
+  if (typeof merged.lifeExpectancy !== 'number') merged.lifeExpectancy = 90;
+  if (typeof merged.safeWithdrawalRate !== 'number') merged.safeWithdrawalRate = 4.0;
+  if (typeof merged.retirementAge !== 'number') merged.retirementAge = 67;
+
+  return merged;
+}
+
+function migrateStore(rawStore: BudgetStore, fromVersion: number): BudgetStore {
+  let migrated: BudgetStore = { ...rawStore };
+
+  if (fromVersion < 2) {
+    migrated = {
+      ...migrated,
+      settings: migrateSettings(migrated.settings as Partial<UserSettings> & { age?: number }),
+    };
+  }
+
+  return migrated;
 }
 
 // Load data from localStorage
@@ -24,7 +62,6 @@ export function loadStore(): BudgetStore {
     if (!raw) {
       raw = localStorage.getItem(LEGACY_STORAGE_KEY);
       if (raw) {
-        // Migrate to new key
         localStorage.setItem(STORAGE_KEY, raw);
         localStorage.removeItem(LEGACY_STORAGE_KEY);
       }
@@ -35,14 +72,21 @@ export function loadStore(): BudgetStore {
     }
 
     const wrapper: StorageWrapper = JSON.parse(raw);
+    const version = typeof wrapper.version === 'number' ? wrapper.version : 1;
 
-    // Handle version migrations here if needed
-    if (wrapper.version !== STORAGE_VERSION) {
-      // Future: migrate data between versions
-      console.log('Storage version mismatch, using stored data as-is');
+    const migrated = migrateStore(wrapper.data, version);
+
+    // If we migrated, persist immediately so it sticks
+    if (version !== STORAGE_VERSION) {
+      const newWrapper: StorageWrapper = {
+        version: STORAGE_VERSION,
+        data: migrated,
+        lastUpdated: Date.now(),
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(newWrapper));
     }
 
-    return wrapper.data;
+    return migrated;
   } catch (error) {
     console.error('Failed to load budget data:', error);
     return INITIAL_STORE;
@@ -85,14 +129,13 @@ export function importData(jsonString: string): BudgetStore | null {
   try {
     const parsed = JSON.parse(jsonString);
 
-    // Validate structure
     if (!parsed.data || typeof parsed.data !== 'object') {
       throw new Error('Invalid data structure');
     }
 
-    const store = parsed.data as BudgetStore;
+    const incomingVersion = typeof parsed.version === 'number' ? parsed.version : 1;
+    const store = migrateStore(parsed.data as BudgetStore, incomingVersion);
 
-    // Validate required fields exist
     if (!store.settings || !Array.isArray(store.budgetItems)) {
       throw new Error('Missing required fields');
     }
