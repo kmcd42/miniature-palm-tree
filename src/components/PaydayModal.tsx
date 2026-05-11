@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { useBudget } from '@/lib/context';
-import { formatCurrency, toWeekly, buildCompleteBudgetItems } from '@/lib/calculations';
+import { formatCurrency, toWeekly, buildCompleteBudgetItems, calculateWeeklyByCategoryEffective } from '@/lib/calculations';
 import { FitNumber } from '@/components/GlassCard';
 
 interface PaydayModalProps {
@@ -30,6 +30,18 @@ export default function PaydayModal({ onClose }: PaydayModalProps) {
     ),
     [budgetItems, investments, savingsBuckets, mortgages, sharedHousing, settings.afterTaxWeeklyIncome]
   );
+
+  // Period totals by category — informational only. Necessities and Costs
+  // generally auto-execute (rent, subscriptions, etc.) so we don't track them
+  // here; we just surface what's flowing out this period.
+  const periodByCategory = useMemo(() => {
+    const weekly = calculateWeeklyByCategoryEffective(allBudgetItems);
+    return {
+      necessity: weekly.necessity * multiplier,
+      cost: weekly.cost * multiplier,
+      savings: weekly.savings * multiplier,
+    };
+  }, [allBudgetItems, multiplier]);
 
   const savingsItems = useMemo(() => {
     const out: Array<{
@@ -139,6 +151,32 @@ export default function PaydayModal({ onClose }: PaydayModalProps) {
                   {freq}
                 </button>
               ))}
+            </div>
+          </div>
+
+          {/* Period-out FYI — necessity + cost surfaces what auto-flows this pay
+              period. Informational only; not tracked or adjusted here. */}
+          <div className="px-5 py-3 border-b border-graphite-600 bg-graphite-850/50">
+            <div className="font-mono text-[10px] tracking-[0.18em] uppercase text-ink-500 mb-2">
+              ▸ Auto-out this period (FYI)
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <div className="font-mono text-[9px] tracking-[0.16em] uppercase text-phosphor-red/80 mb-0.5">
+                  Necessity
+                </div>
+                <div className="mono-num text-base text-ink-100">
+                  {formatCurrency(periodByCategory.necessity)}
+                </div>
+              </div>
+              <div>
+                <div className="font-mono text-[9px] tracking-[0.16em] uppercase text-phosphor-amber/80 mb-0.5">
+                  Cost
+                </div>
+                <div className="mono-num text-base text-ink-100">
+                  {formatCurrency(periodByCategory.cost)}
+                </div>
+              </div>
             </div>
           </div>
 
