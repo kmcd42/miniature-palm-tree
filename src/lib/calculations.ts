@@ -1,4 +1,50 @@
-import { BudgetItem, Investment, Mortgage, Frequency, BudgetCategory, SavingsBucket, SharedHousing, HouseExpense } from '@/types/budget';
+import { BudgetItem, Investment, Mortgage, Frequency, BudgetCategory, SavingsBucket, SharedHousing, HouseExpense, UserSettings, Goal, BudgetStore } from '@/types/budget';
+
+// =========================================================================
+// AGE / DATE helpers
+// =========================================================================
+
+// Compute current age in whole years from a DOB string (YYYY-MM-DD).
+// Falls back to settings.age if DOB is missing.
+export function getCurrentAge(settings: UserSettings | undefined): number {
+  if (!settings) return 0;
+  if (settings.dateOfBirth) {
+    const dob = new Date(settings.dateOfBirth);
+    if (!isNaN(dob.getTime())) {
+      const now = new Date();
+      let age = now.getFullYear() - dob.getFullYear();
+      const m = now.getMonth() - dob.getMonth();
+      if (m < 0 || (m === 0 && now.getDate() < dob.getDate())) age -= 1;
+      return Math.max(0, age);
+    }
+  }
+  return settings.age ?? 0;
+}
+
+// Precise age in fractional years (useful for projections starting mid-year)
+export function getCurrentAgeFractional(settings: UserSettings | undefined): number {
+  if (!settings) return 0;
+  if (settings.dateOfBirth) {
+    const dob = new Date(settings.dateOfBirth);
+    if (!isNaN(dob.getTime())) {
+      const ms = Date.now() - dob.getTime();
+      return Math.max(0, ms / (365.25 * 24 * 60 * 60 * 1000));
+    }
+  }
+  return settings.age ?? 0;
+}
+
+// Years until retirement (can be fractional)
+export function yearsUntilRetirement(settings: UserSettings): number {
+  return Math.max(0, settings.retirementAge - getCurrentAgeFractional(settings));
+}
+
+// Years of expected retirement (retirement → life expectancy)
+export function yearsInRetirement(settings: UserSettings): number {
+  return Math.max(1, settings.lifeExpectancy - settings.retirementAge);
+}
+
+// =========================================================================
 
 // Convert any frequency to weekly amount
 export function toWeekly(amount: number, frequency: Frequency): number {
@@ -794,6 +840,333 @@ export function buildCompleteBudgetItems(
   }
 
   return result;
+}
+
+// =========================================================================
+// RETIREMENT DRAWDOWN
+// =========================================================================
+
+// Calculate a sustainable weekly drawdown from a retirement portfolio that
+// would deplete the balance to zero by `years` in retirement, using a real
+// (inflation-adjusted) annual return rate.
+//
+// Inputs are all in REAL (today's-dollars) terms — we use a real return rate.
+// Result is REAL weekly drawdown.
+//
+// Formula: weekly payment of an annuity that depletes principal.
+//   PMT = P * r / (1 - (1 + r)^-n)
+// where r = weekly real return, n = total weeks in retirement.
+export function calculateWeeklyDrawdown(
+  portfolioAtRetirement: number,
+  years: number,
+  realAnnualReturnRate: number, // e.g. 0.03 for 3% real return
+): number {
+  if (portfolioAtRetirement <= 0 || years <= 0) return 0;
+  const weeks = years * 52;
+  const weeklyRate = Math.pow(1 + realAnnualReturnRate, 1 / 52) - 1;
+  if (weeklyRate === 0) return portfolioAtRetirement / weeks;
+  const pmt = (portfolioAtRetirement * weeklyRate) / (1 - Math.pow(1 + weeklyRate, -weeks));
+  return Math.max(0, pmt);
+}
+
+// Drawdown projection bundle for display
+export interface DrawdownProjection {
+  portfolioAtRetirementReal: number;
+  weeklyDrawdownReal: number;
+  monthlyDrawdownReal: number;
+  yearlyDrawdownReal: number;
+  yearsCovered: number;
+  // Sensitivity bands (conservative / expected / optimistic real returns)
+  conservativeWeekly: number;
+  expectedWeekly: number;
+  optimisticWeekly: number;
+}
+
+export function generateDrawdownProjection(
+  settings: UserSettings,
+  investments: Investment[],
+  mortgages: Mortgage[],
+  propertyValue: number,
+): DrawdownProjection {
+  const currentAge = getCurrentAgeFractional(settings);
+  const projection = projectWealthAtAge(
+    Math.floor(currentAge),
+    settings.retirementAge,
+    investments,
+    mortgages,
+    settings.inflationRate,
+  );
+
+  // Real liquid portfolio at retirement = investments(real) + equity(real)
+  // (Equity assumed to grow with inflation so equity_real ≈ today's equity. Already real-priced in projection.)
+  const equityNow = Math.max(0, propertyValue - mortgages.reduce((s, m) => s + m.principal, 0));
+  const portfolioReal = projection.real + equityNow; // equity considered roughly inflation-flat in real terms
+
+  const yearsInRet = yearsInRetirement(settings);
+
+  // Use the user's stated SWR as the "expected" rate, with ±1.5% bands.
+  const swr = (settings.safeWithdrawalRate ?? 4) / 100;
+  const conservativeRate = Math.max(0, swr - 0.015);
+  const optimisticRate = swr + 0.015;
+
+  // Pure SWR: portfolio * rate. Annuity formula is also useful but the
+  // industry-standard SWR is simpler and what most retirement guides cite.
+  const swrWeekly = (rate: number) => (portfolioReal * rate) / 52;
+
+  const expectedWeekly = swrWeekly(swr);
+
+  return {
+    portfolioAtRetirementReal: portfolioReal,
+    weeklyDrawdownReal: expectedWeekly,
+    monthlyDrawdownReal: expectedWeekly * (52 / 12),
+    yearlyDrawdownReal: expectedWeekly * 52,
+    yearsCovered: yearsInRet,
+    conservativeWeekly: swrWeekly(conservativeRate),
+    expectedWeekly,
+    optimisticWeekly: swrWeekly(optimisticRate),
+  };
+}
+
+// =========================================================================
+// MORTGAGE PROGRESS
+// =========================================================================
+
+// Years elapsed since the mortgage was drawn down
+export function mortgageYearsElapsed(mortgage: Mortgage): number {
+  if (!mortgage.startDate) return 0;
+  const ms = Date.now() - mortgage.startDate;
+  return Math.max(0, ms / (365.25 * 24 * 60 * 60 * 1000));
+}
+
+export function mortgageProgressPercent(mortgage: Mortgage): number {
+  const op = mortgage.originalPrincipal || mortgage.principal;
+  if (op <= 0) return 0;
+  return Math.max(0, Math.min(100, ((op - mortgage.principal) / op) * 100));
+}
+
+// =========================================================================
+// PARTNER SPLIT
+// =========================================================================
+
+// For a budget item that originated as a shared housing item, return the
+// implied total (your share + partner share) and partner share.
+export function partnerSplit(
+  yourWeeklyAmount: number,
+  yourIncome: number,
+  partnerIncome: number,
+): { total: number; yourShare: number; partnerShare: number; yourRatio: number } {
+  const combined = yourIncome + partnerIncome;
+  const yourRatio = combined > 0 ? yourIncome / combined : 0.5;
+  if (yourRatio <= 0) {
+    return { total: yourWeeklyAmount, yourShare: yourWeeklyAmount, partnerShare: 0, yourRatio: 1 };
+  }
+  const total = yourWeeklyAmount / yourRatio;
+  return {
+    total,
+    yourShare: yourWeeklyAmount,
+    partnerShare: total - yourWeeklyAmount,
+    yourRatio,
+  };
+}
+
+// =========================================================================
+// COMPACT CURRENCY FORMATTING (for hero numbers that risk overflow)
+// =========================================================================
+
+export function formatCurrencyCompact(amount: number, currency: string = 'NZD'): string {
+  const abs = Math.abs(amount);
+  const sign = amount < 0 ? '-' : '';
+  const symbol = currency === 'NZD' || currency === 'USD' || currency === 'AUD' || currency === 'CAD' ? '$' : '';
+  if (abs >= 10_000_000) return `${sign}${symbol}${(abs / 1_000_000).toFixed(1)}M`;
+  if (abs >= 1_000_000) return `${sign}${symbol}${(abs / 1_000_000).toFixed(2)}M`;
+  if (abs >= 100_000) return `${sign}${symbol}${Math.round(abs / 1000)}K`;
+  if (abs >= 10_000) return `${sign}${symbol}${(abs / 1000).toFixed(1)}K`;
+  return formatCurrency(amount, false);
+}
+
+// =========================================================================
+// INSIGHTS ENGINE
+// =========================================================================
+
+export type InsightSeverity = 'critical' | 'warn' | 'info' | 'positive';
+
+export interface Insight {
+  id: string;
+  severity: InsightSeverity;
+  label: string;          // short uppercase status label, e.g. "BUDGET · TIGHT"
+  headline: string;       // 1-line takeaway
+  detail?: string;        // optional secondary line
+  actionHref?: string;    // optional deep link
+  actionLabel?: string;
+}
+
+// Generate proactive insights from the full store. Ordered by severity.
+export function generateInsights(store: BudgetStore): Insight[] {
+  const insights: Insight[] = [];
+  const { settings, investments, mortgages, goals, sharedHousing, savingsBuckets } = store;
+
+  if (!settings.afterTaxWeeklyIncome || settings.afterTaxWeeklyIncome <= 0) {
+    insights.push({
+      id: 'no-income',
+      severity: 'warn',
+      label: 'SETUP · INCOME',
+      headline: 'Set your after-tax weekly income to unlock projections.',
+      actionHref: '/settings',
+      actionLabel: 'Open settings',
+    });
+    return insights;
+  }
+
+  const allItems = buildCompleteBudgetItems(
+    store.budgetItems,
+    investments,
+    savingsBuckets,
+    mortgages,
+    sharedHousing,
+    settings.afterTaxWeeklyIncome,
+  );
+
+  const byCat = calculateWeeklyByCategoryEffective(allItems);
+  const totalCommitted = byCat.necessity + byCat.cost + byCat.savings;
+  const uncommitted = settings.afterTaxWeeklyIncome - totalCommitted;
+  const uncommittedPct = (uncommitted / settings.afterTaxWeeklyIncome) * 100;
+
+  // 1) Cashflow status
+  if (uncommitted < 0) {
+    insights.push({
+      id: 'overcommitted',
+      severity: 'critical',
+      label: 'CASHFLOW · OVER',
+      headline: `Committed ${formatCurrency(Math.abs(uncommitted))}/wk beyond income.`,
+      detail: 'Reduce a cost line or raise income to balance the budget.',
+      actionHref: '/budget',
+      actionLabel: 'Review budget',
+    });
+  } else if (uncommittedPct < 5) {
+    insights.push({
+      id: 'tight',
+      severity: 'warn',
+      label: 'CASHFLOW · TIGHT',
+      headline: `Only ${formatCurrency(uncommitted)}/wk uncommitted (${uncommittedPct.toFixed(1)}%).`,
+      detail: 'Little slack for unplanned spending. Consider trimming costs.',
+      actionHref: '/budget',
+    });
+  } else if (uncommittedPct > 20 && byCat.savings / settings.afterTaxWeeklyIncome < 0.15) {
+    insights.push({
+      id: 'underinvested',
+      severity: 'info',
+      label: 'OPPORTUNITY · INVEST',
+      headline: `${formatCurrency(uncommitted)}/wk uncommitted but only ${((byCat.savings / settings.afterTaxWeeklyIncome) * 100).toFixed(0)}% to savings.`,
+      detail: 'Direct surplus into an investment or bucket to compound it.',
+      actionHref: '/wealth',
+      actionLabel: 'Open Wealth',
+    });
+  }
+
+  // 2) Emergency fund coverage
+  const ef = goals.find((g) => g.type === 'emergency_fund');
+  if (ef) {
+    const months = ef.monthsOfExpenses ?? 6;
+    const target = calculateEmergencyFundTargetEffective(allItems, months);
+    if (target > 0) {
+      const coverage = ef.currentAmount / target; // 0-1
+      const monthsCovered = coverage * months;
+      if (coverage < 0.5) {
+        insights.push({
+          id: 'ef-low',
+          severity: 'warn',
+          label: 'EMERGENCY · LOW',
+          headline: `Emergency fund covers ${monthsCovered.toFixed(1)} of ${months} months.`,
+          detail: `${formatCurrency(target - ef.currentAmount, false)} to go.`,
+          actionHref: '/goals',
+        });
+      } else if (coverage >= 1) {
+        insights.push({
+          id: 'ef-full',
+          severity: 'positive',
+          label: 'EMERGENCY · FULL',
+          headline: `Emergency fund is fully stocked (${months} months).`,
+          detail: 'Excess can be redirected to higher-return savings.',
+        });
+      } else {
+        insights.push({
+          id: 'ef-on-track',
+          severity: 'info',
+          label: 'EMERGENCY · BUILDING',
+          headline: `${monthsCovered.toFixed(1)} of ${months} months banked.`,
+          detail: `${formatCurrency(target - ef.currentAmount, false)} remaining.`,
+        });
+      }
+    }
+  }
+
+  // 3) Retirement drawdown
+  const totalPropertyValue = mortgages.reduce((s, m) => s + (m.propertyValue || 0), 0);
+  if (investments.length > 0 || mortgages.length > 0) {
+    const dd = generateDrawdownProjection(settings, investments, mortgages, totalPropertyValue);
+    if (dd.portfolioAtRetirementReal > 0) {
+      insights.push({
+        id: 'drawdown',
+        severity: 'info',
+        label: `RETIREMENT · AGE ${settings.retirementAge}`,
+        headline: `Trajectory: draw ${formatCurrency(dd.weeklyDrawdownReal)}/wk to age ${settings.lifeExpectancy} (real).`,
+        detail: `Portfolio ${formatCurrencyCompact(dd.portfolioAtRetirementReal)} · range ${formatCurrency(dd.conservativeWeekly)}–${formatCurrency(dd.optimisticWeekly)}/wk.`,
+        actionHref: '/wealth',
+        actionLabel: 'Run projection',
+      });
+    }
+  }
+
+  // 4) Partner contribution summary (when shared housing is enabled)
+  if (sharedHousing?.enabled && sharedHousing.partnerWeeklyIncome > 0 && sharedHousing.expenses.length > 0) {
+    const calc = calculateSharedHousing(sharedHousing, settings.afterTaxWeeklyIncome);
+    const partnerName = sharedHousing.partnerName || 'Partner';
+    insights.push({
+      id: 'partner',
+      severity: 'info',
+      label: 'SHARED · HOUSEHOLD',
+      headline: `${partnerName} contributes ${formatCurrency(calc.partnerShare)}/wk to housing.`,
+      detail: `Your share: ${formatCurrency(calc.yourShare)}/wk (${((calc.yourShare / calc.totalWeeklyExpenses) * 100).toFixed(0)}% of household).`,
+    });
+  }
+
+  // 5) Mortgage payoff
+  for (const m of mortgages) {
+    const payoff = calculateMortgagePayoff(m);
+    if (payoff.monthsRemaining < Infinity) {
+      const years = Math.floor(payoff.monthsRemaining / 12);
+      const months = payoff.monthsRemaining % 12;
+      insights.push({
+        id: `mortgage-${m.id}`,
+        severity: 'info',
+        label: 'MORTGAGE · TRAJECTORY',
+        headline: `${m.name} clears in ${years}y ${months}m (${payoff.payoffDate.toLocaleDateString('en-NZ', { month: 'short', year: 'numeric' })}).`,
+        detail: `+$50/wk extra would save ${formatCurrency(mortgageExtraPaymentImpact(m, 50).interestSaved, false)} interest.`,
+      });
+    }
+  }
+
+  // 6) Goal pacing — flag goals that are off-pace
+  for (const goal of goals) {
+    if (goal.type === 'emergency_fund') continue;
+    if (!goal.targetDate || goal.currentAmount >= goal.targetAmount) continue;
+    const needed = weeklyToReachGoal(goal.targetAmount, goal.currentAmount, new Date(goal.targetDate));
+    if (needed > 0 && needed > settings.afterTaxWeeklyIncome * 0.4) {
+      insights.push({
+        id: `goal-${goal.id}`,
+        severity: 'warn',
+        label: 'GOAL · OFF-PACE',
+        headline: `"${goal.name}" needs ${formatCurrency(needed)}/wk to hit deadline.`,
+        detail: 'Push the date or raise the contribution.',
+        actionHref: '/goals',
+      });
+    }
+  }
+
+  // Sort by severity
+  const order: Record<InsightSeverity, number> = { critical: 0, warn: 1, info: 2, positive: 3 };
+  insights.sort((a, b) => order[a.severity] - order[b.severity]);
+  return insights;
 }
 
 // Format relative time (e.g., "2 weeks ago")

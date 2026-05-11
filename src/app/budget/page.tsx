@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import TabBar from '@/components/TabBar';
-import GlassCard, { CategoryBadge } from '@/components/GlassCard';
+import Panel, { CategoryBadge, StatusDot, FitNumber } from '@/components/GlassCard';
 import BottomSheet from '@/components/BottomSheet';
 import { BudgetStackedBar } from '@/components/Charts';
 import { useBudget } from '@/lib/context';
@@ -13,6 +13,7 @@ import {
   getEffectiveWeeklyAmount,
   calculateWeeklyByCategoryEffective,
   calculateSharedHousing,
+  partnerSplit,
 } from '@/lib/calculations';
 
 export default function BudgetPage() {
@@ -24,36 +25,31 @@ export default function BudgetPage() {
 
   if (!isLoaded) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="glass-card p-8">
-          <div className="shimmer w-32 h-6 rounded" />
-        </div>
-      </div>
+      <main className="min-h-screen flex items-center justify-center">
+        <div className="font-mono text-xs tracking-[0.2em] text-phosphor-amber caret-blink">LOADING BGT MODULE</div>
+      </main>
     );
   }
 
   const { settings, budgetItems, investments, savingsBuckets, sharedHousing, mortgages } = store;
+  const partnerName = sharedHousing?.partnerName || 'Partner';
+  const partnerIncome = sharedHousing?.partnerWeeklyIncome || 0;
+  const sharingActive = !!sharedHousing?.enabled && partnerIncome > 0;
 
-  // Toggle collapse state for parent items
   const toggleCollapse = (itemId: string) => {
     setCollapsedItems((prev) => {
       const next = new Set(prev);
-      if (next.has(itemId)) {
-        next.delete(itemId);
-      } else {
-        next.add(itemId);
-      }
+      if (next.has(itemId)) next.delete(itemId);
+      else next.add(itemId);
       return next;
     });
   };
 
-  // Calculate housing share if enabled
   const housingCalc = sharedHousing?.enabled
     ? calculateSharedHousing(sharedHousing, settings.afterTaxWeeklyIncome)
     : null;
 
   // Build effective budget items list including linked investments/savings
-  // NOTE: Excludes KiwiSaver (pre-tax income)
   const linkedBudgetItems: BudgetItem[] = [
     ...investments
       .filter((inv) => inv.weeklyContribution > 0 && inv.type !== 'kiwisaver')
@@ -83,16 +79,13 @@ export default function BudgetPage() {
       })),
   ];
 
-  // Add housing expenses as synced items (parent + children)
   const housingLinkedItems: BudgetItem[] = [];
-  if (sharedHousing?.enabled && housingCalc && sharedHousing.expenses.length > 0) {
+  if (sharedHousing?.enabled && housingCalc && (sharedHousing.expenses.length > 0 || mortgages.length > 0)) {
     const parentId = 'linked-housing-parent';
-
-    // Add parent "Housing" item
     housingLinkedItems.push({
       id: parentId,
       name: 'Housing',
-      amount: 0, // Auto-calculated from children
+      amount: 0,
       frequency: 'weekly' as Frequency,
       category: 'necessity' as BudgetCategory,
       linkedToId: 'shared-housing',
@@ -101,21 +94,20 @@ export default function BudgetPage() {
       updatedAt: sharedHousing.updatedAt,
     });
 
-    // Add mortgage payment as child (if any)
+    const incomeRatio = housingCalc.combinedWeeklyIncome > 0
+      ? settings.afterTaxWeeklyIncome / housingCalc.combinedWeeklyIncome
+      : 0.5;
+
     for (const mortgage of mortgages) {
       const weeklyPayment = mortgage.weeklyPayment + mortgage.extraWeeklyPayment;
-      const incomeRatio = housingCalc.combinedWeeklyIncome > 0
-        ? settings.afterTaxWeeklyIncome / housingCalc.combinedWeeklyIncome
-        : 0.5;
       const yourShare = weeklyPayment * incomeRatio;
-
       housingLinkedItems.push({
         id: `linked-housing-mortgage-${mortgage.id}`,
         name: `${mortgage.name} (your share)`,
         amount: yourShare,
         frequency: 'weekly' as Frequency,
         category: 'necessity' as BudgetCategory,
-        parentId: parentId,
+        parentId,
         linkedToId: mortgage.id,
         linkedToType: 'mortgage' as const,
         createdAt: mortgage.createdAt,
@@ -123,21 +115,16 @@ export default function BudgetPage() {
       });
     }
 
-    // Add each house expense as child
     for (const expense of sharedHousing.expenses) {
       const weeklyAmount = toWeekly(expense.amount, expense.frequency);
-      const incomeRatio = housingCalc.combinedWeeklyIncome > 0
-        ? settings.afterTaxWeeklyIncome / housingCalc.combinedWeeklyIncome
-        : 0.5;
       const yourShare = weeklyAmount * incomeRatio;
-
       housingLinkedItems.push({
         id: `linked-housing-expense-${expense.id}`,
         name: `${expense.name} (your share)`,
         amount: yourShare,
         frequency: 'weekly' as Frequency,
         category: 'necessity' as BudgetCategory,
-        parentId: parentId,
+        parentId,
         linkedToId: expense.id,
         linkedToType: 'housing_expense' as const,
         createdAt: sharedHousing.createdAt,
@@ -146,32 +133,22 @@ export default function BudgetPage() {
     }
   }
 
-  // Combine all linked items
   const allLinkedItems = [...linkedBudgetItems, ...housingLinkedItems];
-
-  // Combine manual items with linked items (exclude duplicates)
   const manualItemIds = new Set(budgetItems.filter(i => i.linkedToId).map(i => i.linkedToId));
-  const effectiveLinkedItems = allLinkedItems.filter(
-    (li) => !manualItemIds.has(li.linkedToId)
-  );
-
+  const effectiveLinkedItems = allLinkedItems.filter((li) => !manualItemIds.has(li.linkedToId));
   const allBudgetItems = [...budgetItems, ...effectiveLinkedItems];
 
-  // Filter items
   const filteredItems = filter === 'all'
     ? allBudgetItems
     : allBudgetItems.filter((item) => item.category === filter);
 
-  // Group by parent (for sub-items)
   const parentItems = filteredItems.filter((item) => !item.parentId);
   const childItems = filteredItems.filter((item) => item.parentId);
 
-  // Calculate totals using effective calculation (respects parent auto-sum)
   const weeklyByCategory = calculateWeeklyByCategoryEffective(allBudgetItems);
   const totalWeeklyCommitted = weeklyByCategory.necessity + weeklyByCategory.cost + weeklyByCategory.savings;
   const uncommitted = settings.afterTaxWeeklyIncome - totalWeeklyCommitted;
 
-  // Prepare data for stacked bar chart (only top-level items)
   const barChartData = parentItems.map((item) => ({
     id: item.id,
     name: item.name,
@@ -181,7 +158,7 @@ export default function BudgetPage() {
 
   const handleDelete = (id: string) => {
     if (id.startsWith('linked-')) {
-      alert('This item is synced from Wealth. Edit it there.');
+      alert('Synced from Wealth — edit it there.');
       return;
     }
     if (confirm('Delete this budget item?')) {
@@ -189,84 +166,80 @@ export default function BudgetPage() {
     }
   };
 
+  // Identify if a given item is shared (i.e. came from shared housing)
+  function isHousingShared(item: BudgetItem): boolean {
+    return !!item.parentId && item.parentId === 'linked-housing-parent';
+  }
+  function housingParent(): BudgetItem | undefined {
+    return parentItems.find((p) => p.id === 'linked-housing-parent');
+  }
+
   return (
     <main className="min-h-screen pb-24 safe-top">
-      <div className="max-w-4xl mx-auto px-4 py-6">
-        {/* Header */}
-        <header className="mb-6">
-          <h1 className="text-2xl font-bold text-white">Budget</h1>
-          <p className="text-white/70 text-sm">Weekly spending plan</p>
+      <div className="max-w-4xl mx-auto px-4 py-5">
+
+        <header className="mb-5">
+          <div className="font-mono text-[10px] tracking-[0.24em] text-phosphor-amber/80 uppercase flex items-center gap-2">
+            <StatusDot color="amber" pulse /> BUDGET · WEEKLY ALLOCATION
+          </div>
+          <h1 className="font-serif text-[36px] leading-none text-ink-100 mt-1">
+            Budget<span className="text-phosphor-amber">.</span>
+          </h1>
         </header>
 
-        {/* Stacked Bar Chart */}
+        {/* Allocation bar */}
         {settings.afterTaxWeeklyIncome > 0 && barChartData.length > 0 && (
-          <GlassCard className="mb-4">
-            <BudgetStackedBar
-              items={barChartData}
-              totalIncome={settings.afterTaxWeeklyIncome}
-              height={24}
-            />
-          </GlassCard>
+          <Panel className="mb-4">
+            <div className="term-label-plain mb-3">▸ Allocation · {formatCurrency(settings.afterTaxWeeklyIncome)}/wk income</div>
+            <BudgetStackedBar items={barChartData} totalIncome={settings.afterTaxWeeklyIncome} height={22} />
+          </Panel>
         )}
 
-        {/* Summary Card */}
-        <GlassCard className="mb-6">
-          <div className="flex justify-between items-center mb-4">
+        {/* Summary */}
+        <Panel brackets className="mb-5">
+          <div className="flex justify-between items-end gap-4 mb-4 flex-wrap">
             <div>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Weekly Income</p>
-              <p className="text-2xl font-bold money-display">
-                {formatCurrency(settings.afterTaxWeeklyIncome)}
-              </p>
+              <div className="term-label-plain mb-1">▸ Weekly income</div>
+              <FitNumber value={formatCurrency(settings.afterTaxWeeklyIncome)} baseSize={28} minSize={16} className="text-ink-100 font-medium" />
             </div>
             <div className="text-right">
-              <p className="text-sm text-gray-500 dark:text-gray-400">Uncommitted</p>
-              <p className={`text-2xl font-bold money-display ${uncommitted >= 0 ? 'text-ios-green' : 'text-ios-red'}`}>
-                {formatCurrency(uncommitted)}
-              </p>
+              <div className="term-label-plain mb-1">▸ Uncommitted</div>
+              <FitNumber
+                value={formatCurrency(uncommitted)}
+                baseSize={28}
+                minSize={16}
+                className={`font-medium ${uncommitted >= 0 ? 'text-phosphor-mint mono-num-glow-mint' : 'text-phosphor-red mono-num-glow-red'}`}
+              />
             </div>
           </div>
-
           <div className="grid grid-cols-3 gap-3">
-            <div className="text-center p-2 rounded-ios bg-ios-red/10">
-              <p className="text-xs text-ios-red">Necessity</p>
-              <p className="font-semibold money-display">{formatCurrency(weeklyByCategory.necessity)}</p>
-            </div>
-            <div className="text-center p-2 rounded-ios bg-ios-orange/10">
-              <p className="text-xs text-ios-orange">Cost</p>
-              <p className="font-semibold money-display">{formatCurrency(weeklyByCategory.cost)}</p>
-            </div>
-            <div className="text-center p-2 rounded-ios bg-ios-green/10">
-              <p className="text-xs text-ios-green">Savings</p>
-              <p className="font-semibold money-display">{formatCurrency(weeklyByCategory.savings)}</p>
-            </div>
+            <BlockStat label="Necessity" value={weeklyByCategory.necessity} color="red" />
+            <BlockStat label="Cost" value={weeklyByCategory.cost} color="amber" />
+            <BlockStat label="Savings" value={weeklyByCategory.savings} color="mint" />
           </div>
-        </GlassCard>
+        </Panel>
 
-        {/* Filter Tabs */}
+        {/* Filter */}
         <div className="flex gap-2 mb-4 overflow-x-auto hide-scrollbar">
           {(['all', 'necessity', 'cost', 'savings'] as const).map((cat) => (
             <button
               key={cat}
               onClick={() => setFilter(cat)}
-              className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all ${
+              className={`px-3.5 py-1.5 font-mono text-[10px] tracking-[0.18em] uppercase rounded-sm border whitespace-nowrap transition-all ${
                 filter === cat
-                  ? 'bg-white text-gray-900 shadow-ios'
-                  : 'bg-white/30 text-white'
+                  ? 'border-phosphor-amber text-phosphor-amber bg-phosphor-amber/8'
+                  : 'border-graphite-600 text-ink-500 hover:text-ink-300 hover:border-graphite-500'
               }`}
             >
-              {cat === 'all' ? 'All' : cat.charAt(0).toUpperCase() + cat.slice(1)}
+              {cat === 'all' ? 'All' : cat}
             </button>
           ))}
         </div>
 
-        {/* Budget Items List */}
-        <div className="space-y-3">
+        {/* Items */}
+        <div className="space-y-2.5">
           {parentItems.length === 0 ? (
-            <GlassCard>
-              <p className="text-center text-gray-500 dark:text-gray-400 py-8">
-                No budget items yet. Add your first one!
-              </p>
-            </GlassCard>
+            <Panel><p className="text-center text-ink-500 py-8 text-sm">No budget items yet. Add your first one.</p></Panel>
           ) : (
             parentItems.map((item) => {
               const itemChildren = childItems.filter((c) => c.parentId === item.id);
@@ -274,113 +247,131 @@ export default function BudgetPage() {
               const weeklyAmount = getEffectiveWeeklyAmount(item, allBudgetItems);
               const isLinked = item.id.startsWith('linked-');
               const isCollapsed = collapsedItems.has(item.id);
+              const isHousingParent = item.id === 'linked-housing-parent';
+
+              // Partner split metadata for the parent
+              let parentSplitInfo: ReturnType<typeof partnerSplit> | null = null;
+              if (isHousingParent && sharingActive) {
+                parentSplitInfo = partnerSplit(weeklyAmount, settings.afterTaxWeeklyIncome, partnerIncome);
+              }
 
               return (
-                <GlassCard
+                <Panel
                   key={item.id}
                   onClick={() => {
                     if (isLinked) {
-                      alert('This item is synced from Wealth/Goals. Edit it there.');
+                      alert('Synced from Wealth — edit it there.');
                     } else {
                       setEditingItem(item);
                     }
                   }}
                 >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        {/* Collapse toggle for parent items */}
                         {isParent && (
                           <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleCollapse(item.id);
-                            }}
-                            className="w-6 h-6 flex items-center justify-center rounded bg-white/10 hover:bg-white/20 transition-colors"
+                            onClick={(e) => { e.stopPropagation(); toggleCollapse(item.id); }}
+                            className="w-5 h-5 flex items-center justify-center rounded-sm border border-graphite-600 hover:border-phosphor-amber/40 text-ink-500 hover:text-phosphor-amber transition-colors"
+                            aria-label={isCollapsed ? 'Expand' : 'Collapse'}
                           >
-                            <svg
-                              className={`w-4 h-4 text-gray-600 dark:text-gray-300 transition-transform ${isCollapsed ? '' : 'rotate-90'}`}
-                              fill="none"
-                              viewBox="0 0 24 24"
-                              stroke="currentColor"
-                              strokeWidth={2}
-                            >
+                            <svg className={`w-3 h-3 transition-transform ${isCollapsed ? '' : 'rotate-90'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                               <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                             </svg>
                           </button>
                         )}
-                        <h3 className="font-semibold text-gray-900 dark:text-white">
-                          {item.name}
-                        </h3>
+                        <h3 className="font-medium text-ink-100 truncate">{item.name}</h3>
                         <CategoryBadge category={item.category} />
-                        {isParent && (
-                          <span className="text-xs px-2 py-0.5 rounded-full bg-ios-blue/10 text-ios-blue">
-                            Auto
-                          </span>
-                        )}
-                        {isLinked && (
-                          <span className="text-xs px-2 py-0.5 rounded-full bg-ios-purple/10 text-ios-purple">
-                            Synced
-                          </span>
-                        )}
+                        {isParent && <span className="pill pill-cyan">AUTO</span>}
+                        {isLinked && <span className="pill pill-violet">SYNC</span>}
+                        {isHousingParent && sharingActive && <span className="pill pill-violet">SHARED</span>}
                       </div>
                       {!isParent && (
-                        <p className="text-sm text-gray-500 dark:text-gray-400">
+                        <div className="font-mono text-[10px] tracking-[0.14em] uppercase text-ink-500 mt-0.5">
                           {formatCurrency(item.amount)}/{item.frequency}
-                        </p>
+                        </div>
                       )}
-                      {isParent && (
-                        <p className="text-sm text-gray-500 dark:text-gray-400">
-                          {itemChildren.length} item{itemChildren.length !== 1 ? 's' : ''} combined
-                        </p>
+                      {isParent && !isHousingParent && (
+                        <div className="font-mono text-[10px] tracking-[0.14em] uppercase text-ink-500 mt-0.5">
+                          {itemChildren.length} ITEM{itemChildren.length === 1 ? '' : 'S'} COMBINED
+                        </div>
+                      )}
+                      {isHousingParent && parentSplitInfo && (
+                        <div className="font-mono text-[10px] tracking-[0.14em] uppercase text-ink-500 mt-0.5">
+                          HOUSEHOLD {formatCurrency(parentSplitInfo.total)}/WK · {itemChildren.length} ITEMS
+                        </div>
                       )}
                     </div>
-                    <div className="text-right">
-                      <p className="font-bold text-lg money-display">
-                        {formatCurrency(weeklyAmount)}
-                      </p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">per week</p>
+                    <div className="text-right shrink-0">
+                      <FitNumber value={formatCurrency(weeklyAmount)} baseSize={20} minSize={13} className="text-ink-100 font-medium" />
+                      <div className="font-mono text-[10px] tracking-[0.14em] uppercase text-ink-500 mt-0.5">PER WEEK</div>
                     </div>
                   </div>
 
-                  {/* Sub-items (collapsible) */}
+                  {/* Housing parent split bar */}
+                  {isHousingParent && parentSplitInfo && (
+                    <div className="mt-3 pt-3 border-t border-graphite-600">
+                      <div className="split-bar mb-1.5">
+                        <div style={{ width: `${parentSplitInfo.yourRatio * 100}%`, background: '#5BC8FF', boxShadow: '0 0 4px #5BC8FF' }} />
+                        <div style={{ width: `${(1 - parentSplitInfo.yourRatio) * 100}%`, background: '#C599FF', boxShadow: '0 0 4px #C599FF' }} />
+                      </div>
+                      <div className="flex justify-between font-mono text-[10px] tracking-[0.14em] uppercase">
+                        <span className="text-phosphor-cyan/90">YOU {formatCurrency(parentSplitInfo.yourShare)}</span>
+                        <span className="text-phosphor-violet/90">{partnerName.toUpperCase()} {formatCurrency(parentSplitInfo.partnerShare)}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Sub-items */}
                   {itemChildren.length > 0 && !isCollapsed && (
-                    <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700 space-y-2">
-                      {itemChildren.map((child) => (
-                        <div
-                          key={child.id}
-                          className="flex justify-between text-sm pl-4 border-l-2 border-gray-300 dark:border-gray-600 cursor-pointer hover:bg-white/10 -mx-1 px-1 py-1 rounded"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (!child.id.startsWith('linked-')) {
-                              setEditingItem(child);
-                            }
-                          }}
-                        >
-                          <span className="text-gray-600 dark:text-gray-300">{child.name}</span>
-                          <span className="money-display">{formatCurrency(toWeekly(child.amount, child.frequency))}</span>
-                        </div>
-                      ))}
+                    <div className="mt-3 pt-3 border-t border-graphite-600 space-y-1.5">
+                      {itemChildren.map((child) => {
+                        const childWeekly = toWeekly(child.amount, child.frequency);
+                        const childSplit = sharingActive && isHousingShared(child)
+                          ? partnerSplit(childWeekly, settings.afterTaxWeeklyIncome, partnerIncome)
+                          : null;
+                        return (
+                          <div
+                            key={child.id}
+                            className="flex justify-between items-start pl-3 border-l border-graphite-550 cursor-pointer hover:bg-graphite-800/60 py-1.5 rounded-r-sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (!child.id.startsWith('linked-')) setEditingItem(child);
+                            }}
+                          >
+                            <div className="min-w-0">
+                              <div className="text-ink-300 text-sm truncate">{child.name}</div>
+                              {childSplit && (
+                                <div className="font-mono text-[10px] tracking-[0.14em] uppercase text-ink-500 mt-0.5">
+                                  <span className="text-phosphor-violet/90">{partnerName.toUpperCase()} +{formatCurrency(childSplit.partnerShare)}</span>
+                                  <span className="text-ink-700 mx-1.5">·</span>
+                                  <span>TOTAL {formatCurrency(childSplit.total)}</span>
+                                </div>
+                              )}
+                            </div>
+                            <span className="mono-num text-ink-100 ml-3 shrink-0">{formatCurrency(childWeekly)}</span>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
 
                   {item.notes && (
-                    <p className="mt-2 text-sm text-gray-500 dark:text-gray-400 italic">
-                      {item.notes}
-                    </p>
+                    <p className="mt-2 text-xs text-ink-500 italic">{item.notes}</p>
                   )}
-                </GlassCard>
+                </Panel>
               );
             })
           )}
         </div>
 
-        {/* Add Button */}
+        {/* Add button */}
         <button
           onClick={() => setShowAddSheet(true)}
-          className="fixed bottom-24 right-4 w-14 h-14 rounded-full bg-ios-blue text-white shadow-ios-lg flex items-center justify-center"
+          className="fixed bottom-24 right-4 w-12 h-12 rounded-sm bg-phosphor-amber/8 border border-phosphor-amber text-phosphor-amber flex items-center justify-center hover:bg-phosphor-amber/14 transition-all shadow-glow-amber z-40"
+          aria-label="Add budget item"
         >
-          <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
           </svg>
         </button>
@@ -388,26 +379,18 @@ export default function BudgetPage() {
 
       <TabBar />
 
-      {/* Add/Edit Sheet */}
       <BudgetItemSheet
         isOpen={showAddSheet || !!editingItem}
-        onClose={() => {
-          setShowAddSheet(false);
-          setEditingItem(null);
-        }}
+        onClose={() => { setShowAddSheet(false); setEditingItem(null); }}
         item={editingItem}
         parentItems={budgetItems.filter((i) => !i.parentId && !i.linkedToId)}
         onSave={(data) => {
           if (editingItem) {
-            dispatch({
-              type: 'UPDATE_BUDGET_ITEM',
-              payload: { id: editingItem.id, updates: data },
-            });
+            dispatch({ type: 'UPDATE_BUDGET_ITEM', payload: { id: editingItem.id, updates: data } });
           } else {
             dispatch({ type: 'ADD_BUDGET_ITEM', payload: data });
           }
-          setShowAddSheet(false);
-          setEditingItem(null);
+          setShowAddSheet(false); setEditingItem(null);
         }}
         onDelete={editingItem && !editingItem.id.startsWith('linked-') ? () => {
           handleDelete(editingItem.id);
@@ -418,14 +401,23 @@ export default function BudgetPage() {
   );
 }
 
-// Budget Item Form Sheet
+function BlockStat({ label, value, color }: { label: string; value: number; color: 'red' | 'amber' | 'mint' }) {
+  const cls = color === 'red' ? 'text-phosphor-red' : color === 'amber' ? 'text-phosphor-amber' : 'text-phosphor-mint';
+  const bg = color === 'red' ? 'bg-phosphor-red/[0.05] border-phosphor-red/25'
+    : color === 'amber' ? 'bg-phosphor-amber/[0.05] border-phosphor-amber/25'
+    : 'bg-phosphor-mint/[0.05] border-phosphor-mint/25';
+  return (
+    <div className={`p-2.5 rounded-sm border ${bg}`}>
+      <div className="term-label-plain mb-1">▸ {label}</div>
+      <FitNumber value={formatCurrency(value)} baseSize={18} minSize={12} className={`${cls} font-medium`} />
+    </div>
+  );
+}
+
+// ----- Budget item sheet ----------------------------------------------------
+
 function BudgetItemSheet({
-  isOpen,
-  onClose,
-  item,
-  parentItems,
-  onSave,
-  onDelete,
+  isOpen, onClose, item, parentItems, onSave, onDelete,
 }: {
   isOpen: boolean;
   onClose: () => void;
@@ -441,7 +433,6 @@ function BudgetItemSheet({
   const [parentId, setParentId] = useState(item?.parentId || '');
   const [notes, setNotes] = useState(item?.notes || '');
 
-  // Reset form when item changes
   React.useEffect(() => {
     setName(item?.name || '');
     setAmount(item?.amount?.toString() || '');
@@ -454,9 +445,7 @@ function BudgetItemSheet({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name) return;
-    // Amount is optional for parent items (will be auto-calculated)
     const amountValue = parseFloat(amount) || 0;
-
     onSave({
       name,
       amount: amountValue,
@@ -468,54 +457,22 @@ function BudgetItemSheet({
   };
 
   return (
-    <BottomSheet
-      isOpen={isOpen}
-      onClose={onClose}
-      title={item ? 'Edit Budget Item' : 'Add Budget Item'}
-    >
+    <BottomSheet isOpen={isOpen} onClose={onClose} code="BGT" title={item ? 'Edit Item' : 'Add Item'}>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-            Name
-          </label>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="e.g., Groceries, Rent, Subscriptions"
-            className="ios-input"
-            required
-          />
+          <label className="term-label-plain block mb-1.5">▸ Name</label>
+          <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g., Groceries, Rent" className="term-input" required />
         </div>
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Amount
-            </label>
-            <input
-              type="number"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              placeholder="0.00"
-              step="0.01"
-              min="0"
-              className="ios-input"
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              Leave 0 for parent items
-            </p>
+            <label className="term-label-plain block mb-1.5">▸ Amount</label>
+            <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" step="0.01" min="0" className="term-input" />
+            <p className="text-[11px] text-ink-500 mt-1">Leave 0 for parent items</p>
           </div>
-
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Frequency
-            </label>
-            <select
-              value={frequency}
-              onChange={(e) => setFrequency(e.target.value as Frequency)}
-              className="ios-input"
-            >
+            <label className="term-label-plain block mb-1.5">▸ Frequency</label>
+            <select value={frequency} onChange={(e) => setFrequency(e.target.value as Frequency)} className="term-input">
               <option value="weekly">Weekly</option>
               <option value="fortnightly">Fortnightly</option>
               <option value="monthly">Monthly</option>
@@ -525,26 +482,24 @@ function BudgetItemSheet({
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-            Category
-          </label>
+          <label className="term-label-plain block mb-1.5">▸ Category</label>
           <div className="grid grid-cols-3 gap-2">
             {(['necessity', 'cost', 'savings'] as const).map((cat) => (
               <button
                 key={cat}
                 type="button"
                 onClick={() => setCategory(cat)}
-                className={`py-2 px-3 rounded-ios text-sm font-medium transition-all ${
+                className={`py-2 px-2 font-mono text-[10px] tracking-[0.14em] uppercase border rounded-sm transition-all ${
                   category === cat
                     ? cat === 'necessity'
-                      ? 'bg-ios-red text-white'
+                      ? 'border-phosphor-red text-phosphor-red bg-phosphor-red/8'
                       : cat === 'cost'
-                        ? 'bg-ios-orange text-white'
-                        : 'bg-ios-green text-white'
-                    : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'
+                      ? 'border-phosphor-amber text-phosphor-amber bg-phosphor-amber/8'
+                      : 'border-phosphor-mint text-phosphor-mint bg-phosphor-mint/8'
+                    : 'border-graphite-600 text-ink-500 hover:text-ink-300 hover:border-graphite-500'
                 }`}
               >
-                {cat.charAt(0).toUpperCase() + cat.slice(1)}
+                {cat}
               </button>
             ))}
           </div>
@@ -552,52 +507,27 @@ function BudgetItemSheet({
 
         {parentItems.length > 0 && (
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Parent Item (optional - for grouping)
-            </label>
-            <select
-              value={parentId}
-              onChange={(e) => setParentId(e.target.value)}
-              className="ios-input"
-            >
-              <option value="">None (top-level item)</option>
+            <label className="term-label-plain block mb-1.5">▸ Parent (optional)</label>
+            <select value={parentId} onChange={(e) => setParentId(e.target.value)} className="term-input">
+              <option value="">None — top-level item</option>
               {parentItems.filter((p) => p.id !== item?.id).map((parent) => (
-                <option key={parent.id} value={parent.id}>
-                  {parent.name}
-                </option>
+                <option key={parent.id} value={parent.id}>{parent.name}</option>
               ))}
             </select>
-            <p className="text-xs text-gray-500 mt-1">
-              Parent items auto-calculate their total from children
-            </p>
+            <p className="text-[11px] text-ink-500 mt-1">Parents auto-sum their children</p>
           </div>
         )}
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-            Notes (optional)
-          </label>
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="Any additional details..."
-            className="ios-input min-h-[80px] resize-none"
-          />
+          <label className="term-label-plain block mb-1.5">▸ Notes (optional)</label>
+          <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Details..." className="term-input min-h-[60px] resize-none" />
         </div>
 
-        <div className="flex gap-3 pt-4">
+        <div className="flex gap-3 pt-3">
           {onDelete && (
-            <button
-              type="button"
-              onClick={onDelete}
-              className="px-6 py-3 rounded-ios font-semibold text-ios-red bg-ios-red/10"
-            >
-              Delete
-            </button>
+            <button type="button" onClick={onDelete} className="term-btn-danger">Delete</button>
           )}
-          <button type="submit" className="ios-button flex-1">
-            {item ? 'Save Changes' : 'Add Item'}
-          </button>
+          <button type="submit" className="term-btn flex-1">▸ {item ? 'Save' : 'Add'}</button>
         </div>
       </form>
     </BottomSheet>

@@ -2,15 +2,16 @@
 
 import React, { useState } from 'react';
 import TabBar from '@/components/TabBar';
-import GlassCard, { CardHeader, CardValue, ProgressBar } from '@/components/GlassCard';
+import Panel, { CardHeader, ProgressBar, StatusDot, FitNumber } from '@/components/GlassCard';
 import BottomSheet from '@/components/BottomSheet';
 import { useBudget } from '@/lib/context';
 import { Goal, GoalType, SavingsBucket } from '@/types/budget';
 import {
   formatCurrency,
-  calculateEmergencyFundTarget,
+  formatCurrencyCompact,
+  calculateEmergencyFundTargetEffective,
   weeklyToReachGoal,
-  toWeekly,
+  buildCompleteBudgetItems,
 } from '@/lib/calculations';
 
 export default function GoalsPage() {
@@ -22,215 +23,182 @@ export default function GoalsPage() {
 
   if (!isLoaded) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="glass-card p-8">
-          <div className="shimmer w-32 h-6 rounded" />
-        </div>
-      </div>
+      <main className="min-h-screen flex items-center justify-center">
+        <div className="font-mono text-xs tracking-[0.2em] text-phosphor-amber caret-blink">LOADING TGT MODULE</div>
+      </main>
     );
   }
 
-  const { goals, savingsBuckets, budgetItems } = store;
+  const { settings, goals, savingsBuckets, budgetItems, investments, mortgages, sharedHousing } = store;
 
-  // Calculate emergency fund target if goal exists
+  // FIX: build complete budget items (incl. synced housing) and use the
+  // effective calculation that counts BOTH necessity + cost.
+  const allBudgetItems = buildCompleteBudgetItems(
+    budgetItems,
+    investments,
+    savingsBuckets,
+    mortgages,
+    sharedHousing,
+    settings.afterTaxWeeklyIncome,
+  );
+
   const emergencyGoal = goals.find((g) => g.type === 'emergency_fund');
   const emergencyTarget = emergencyGoal?.monthsOfExpenses
-    ? calculateEmergencyFundTarget(budgetItems, emergencyGoal.monthsOfExpenses)
+    ? calculateEmergencyFundTargetEffective(allBudgetItems, emergencyGoal.monthsOfExpenses)
     : 0;
 
   return (
     <main className="min-h-screen pb-24 safe-top">
-      <div className="max-w-4xl mx-auto px-4 py-6">
-        {/* Header */}
-        <header className="mb-6">
-          <h1 className="text-2xl font-bold text-white">Goals</h1>
-          <p className="text-white/70 text-sm">Track your financial targets</p>
+      <div className="max-w-4xl mx-auto px-4 py-5">
+
+        <header className="mb-5">
+          <div className="font-mono text-[10px] tracking-[0.24em] text-phosphor-amber/80 uppercase flex items-center gap-2">
+            <StatusDot color="amber" pulse /> GOALS · TARGETS &amp; BUCKETS
+          </div>
+          <h1 className="font-serif text-[36px] leading-none text-ink-100 mt-1">
+            Goals<span className="text-phosphor-amber">.</span>
+          </h1>
         </header>
 
-        {/* Goals Section */}
-        <section className="mb-8">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-lg font-semibold text-white">Financial Goals</h2>
-            <button
-              onClick={() => setShowAddGoal(true)}
-              className="px-3 py-1.5 rounded-full bg-white/20 text-white text-sm font-medium"
-            >
-              + Add Goal
-            </button>
+        {/* Goals */}
+        <section className="mb-6">
+          <div className="flex justify-between items-center mb-3">
+            <div className="font-mono text-[11px] tracking-[0.22em] uppercase text-ink-100 flex items-center gap-2">
+              <span className="font-mono text-[9px] tracking-[0.2em] uppercase text-phosphor-amber px-1.5 py-0.5 border border-phosphor-amber/40 rounded-sm">TGT</span>
+              Financial Goals
+            </div>
+            <button onClick={() => setShowAddGoal(true)} className="term-btn-ghost text-[10px]">▸ Add Goal</button>
           </div>
 
           {goals.length === 0 ? (
-            <GlassCard>
-              <p className="text-center text-gray-500 dark:text-gray-400 py-6">
-                No goals yet. Add an emergency fund, wealth target, or time-specific goal.
-              </p>
-            </GlassCard>
+            <Panel><p className="text-center text-ink-500 py-6 text-sm">No goals yet. Add an emergency fund or wealth target.</p></Panel>
           ) : (
             <div className="space-y-3">
               {goals.map((goal) => {
                 const isEmergency = goal.type === 'emergency_fund';
                 const target = isEmergency ? emergencyTarget : goal.targetAmount;
-                const progress = target > 0 ? (goal.currentAmount / target) * 100 : 0;
-
-                // Calculate weekly needed for time-specific goals
+                const progress = target > 0 ? Math.min(100, (goal.currentAmount / target) * 100) : 0;
                 let weeklyNeeded = 0;
                 if (goal.targetDate && goal.targetAmount > goal.currentAmount) {
-                  weeklyNeeded = weeklyToReachGoal(
-                    goal.targetAmount,
-                    goal.currentAmount,
-                    new Date(goal.targetDate)
-                  );
+                  weeklyNeeded = weeklyToReachGoal(goal.targetAmount, goal.currentAmount, new Date(goal.targetDate));
                 }
 
+                const typePillCls = {
+                  emergency_fund: 'pill pill-amber',
+                  wealth: 'pill pill-mint',
+                  time_specific: 'pill pill-violet',
+                  debt_free: 'pill pill-cyan',
+                }[goal.type];
+                const typeLabel = {
+                  emergency_fund: `${goal.monthsOfExpenses ?? 6}MO EF`,
+                  wealth: 'WEALTH',
+                  time_specific: 'TIME',
+                  debt_free: 'DEBT-FREE',
+                }[goal.type];
+
+                // For emergency fund, also compute months covered
+                const monthsCovered = isEmergency && target > 0
+                  ? (goal.currentAmount / target) * (goal.monthsOfExpenses ?? 0)
+                  : 0;
+
                 return (
-                  <GlassCard key={goal.id} onClick={() => setEditingGoal(goal)}>
-                    <div className="flex items-start justify-between mb-3">
-                      <div>
-                        <h3 className="font-semibold text-gray-900 dark:text-white">{goal.name}</h3>
-                        <span className={`text-xs px-2 py-0.5 rounded-full ${
-                          goal.type === 'emergency_fund'
-                            ? 'bg-ios-orange/10 text-ios-orange'
-                            : goal.type === 'wealth'
-                              ? 'bg-ios-green/10 text-ios-green'
-                              : goal.type === 'time_specific'
-                                ? 'bg-ios-purple/10 text-ios-purple'
-                                : 'bg-ios-blue/10 text-ios-blue'
-                        }`}>
-                          {goal.type === 'emergency_fund'
-                            ? `${goal.monthsOfExpenses} Month Emergency`
-                            : goal.type === 'wealth'
-                              ? 'Wealth Target'
-                              : goal.type === 'time_specific'
-                                ? 'Time Goal'
-                                : 'Debt Free'}
-                        </span>
+                  <Panel key={goal.id} onClick={() => setEditingGoal(goal)}>
+                    <div className="flex items-start justify-between gap-3 mb-2">
+                      <div className="min-w-0">
+                        <h3 className="text-ink-100 font-medium truncate">{goal.name}</h3>
+                        <span className={typePillCls + ' mt-1.5 inline-block'}>{typeLabel}</span>
                       </div>
-                      <div className="text-right">
-                        <p className="font-bold text-lg money-display">
-                          {formatCurrency(goal.currentAmount, false)}
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          of {formatCurrency(target, false)}
-                        </p>
+                      <div className="text-right shrink-0">
+                        <FitNumber value={formatCurrencyCompact(goal.currentAmount)} baseSize={20} minSize={13} className="text-ink-100 font-medium" />
+                        <div className="font-mono text-[10px] tracking-[0.14em] uppercase text-ink-500 mt-0.5">
+                          OF {formatCurrencyCompact(target)}
+                        </div>
                       </div>
                     </div>
 
-                    <ProgressBar
-                      progress={progress}
-                      color={progress >= 100 ? 'success' : 'primary'}
-                      showLabel
-                    />
+                    <ProgressBar progress={progress} color={progress >= 100 ? 'success' : 'amber'} showLabel />
+
+                    {isEmergency && target > 0 && (
+                      <div className="mt-2 font-mono text-[10px] tracking-[0.14em] uppercase text-ink-500">
+                        ▸ COVERS {monthsCovered.toFixed(1)} OF {goal.monthsOfExpenses ?? 6} MONTHS · NECESSITY + COST
+                      </div>
+                    )}
 
                     {goal.targetDate && (
-                      <div className="mt-3 flex justify-between text-sm">
-                        <span className="text-gray-500 dark:text-gray-400">Target Date</span>
-                        <span className="font-medium">
-                          {new Date(goal.targetDate).toLocaleDateString('en-NZ', {
-                            month: 'short',
-                            year: 'numeric',
-                          })}
-                        </span>
+                      <div className="mt-2 flex justify-between font-mono text-[10px] tracking-[0.14em] uppercase">
+                        <span className="text-ink-500">▸ Target date</span>
+                        <span className="text-ink-100">{new Date(goal.targetDate).toLocaleDateString('en-NZ', { month: 'short', year: 'numeric' })}</span>
                       </div>
                     )}
 
                     {weeklyNeeded > 0 && (
-                      <div className="mt-2 p-2 rounded-ios bg-ios-blue/10 text-sm">
-                        <p className="text-ios-blue">
-                          Need {formatCurrency(weeklyNeeded)}/week to reach goal on time
-                        </p>
+                      <div className="mt-2 border-l-2 border-phosphor-cyan/40 pl-3 py-1.5 bg-phosphor-cyan/[0.04] rounded-r-sm">
+                        <span className="font-mono text-[10px] tracking-[0.14em] uppercase text-phosphor-cyan">
+                          ▸ Need {formatCurrency(weeklyNeeded)}/WK to hit deadline
+                        </span>
                       </div>
                     )}
 
-                    {goal.notes && (
-                      <p className="mt-2 text-sm text-gray-500 dark:text-gray-400 italic">
-                        {goal.notes}
-                      </p>
-                    )}
-                  </GlassCard>
+                    {goal.notes && <p className="mt-2 text-xs text-ink-500 italic">{goal.notes}</p>}
+                  </Panel>
                 );
               })}
             </div>
           )}
         </section>
 
-        {/* Savings Buckets Section */}
+        {/* Savings buckets */}
         <section>
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-lg font-semibold text-white">Savings Buckets</h2>
-            <button
-              onClick={() => setShowAddBucket(true)}
-              className="px-3 py-1.5 rounded-full bg-white/20 text-white text-sm font-medium"
-            >
-              + Add Bucket
-            </button>
+          <div className="flex justify-between items-center mb-3">
+            <div className="font-mono text-[11px] tracking-[0.22em] uppercase text-ink-100 flex items-center gap-2">
+              <span className="font-mono text-[9px] tracking-[0.2em] uppercase text-phosphor-amber px-1.5 py-0.5 border border-phosphor-amber/40 rounded-sm">BKT</span>
+              Savings Buckets
+            </div>
+            <button onClick={() => setShowAddBucket(true)} className="term-btn-ghost text-[10px]">▸ Add Bucket</button>
           </div>
 
           {savingsBuckets.length === 0 ? (
-            <GlassCard>
-              <p className="text-center text-gray-500 dark:text-gray-400 py-6">
-                No savings buckets yet. Create buckets for travel, tech, paternity leave, etc.
-              </p>
-            </GlassCard>
+            <Panel><p className="text-center text-ink-500 py-6 text-sm">No buckets yet. Create one for travel, tech, etc.</p></Panel>
           ) : (
             <div className="bento-grid">
               {savingsBuckets.map((bucket) => {
-                const progress = bucket.targetAmount > 0
-                  ? (bucket.currentAmount / bucket.targetAmount) * 100
-                  : 0;
-
-                // Calculate time to reach target
+                const progress = bucket.targetAmount > 0 ? Math.min(100, (bucket.currentAmount / bucket.targetAmount) * 100) : 0;
                 let weeksToTarget = 0;
                 if (bucket.weeklyContribution > 0 && bucket.targetAmount > bucket.currentAmount) {
-                  weeksToTarget = Math.ceil(
-                    (bucket.targetAmount - bucket.currentAmount) / bucket.weeklyContribution
-                  );
+                  weeksToTarget = Math.ceil((bucket.targetAmount - bucket.currentAmount) / bucket.weeklyContribution);
                 }
-
                 return (
-                  <GlassCard key={bucket.id} onClick={() => setEditingBucket(bucket)}>
+                  <Panel key={bucket.id} onClick={() => setEditingBucket(bucket)}>
                     <CardHeader title={bucket.name} />
-
-                    <div className="flex justify-between items-end mb-2">
-                      <CardValue
-                        value={formatCurrency(bucket.currentAmount, false)}
-                        size="medium"
+                    <div className="flex justify-between items-end mb-2 gap-3">
+                      <FitNumber
+                        value={formatCurrencyCompact(bucket.currentAmount)}
+                        baseSize={26}
+                        minSize={16}
+                        className="text-ink-100 font-medium"
                       />
                       {bucket.targetAmount > 0 && (
-                        <p className="text-sm text-gray-500">
-                          / {formatCurrency(bucket.targetAmount, false)}
-                        </p>
+                        <div className="font-mono text-[10px] tracking-[0.14em] uppercase text-ink-500 shrink-0">
+                          /{formatCurrencyCompact(bucket.targetAmount)}
+                        </div>
                       )}
                     </div>
-
-                    {bucket.targetAmount > 0 && (
-                      <ProgressBar
-                        progress={progress}
-                        color={progress >= 100 ? 'success' : 'primary'}
-                      />
-                    )}
-
-                    <div className="mt-3 flex justify-between text-sm">
-                      <span className="text-gray-500 dark:text-gray-400">Weekly</span>
-                      <span className="font-medium money-display">
-                        +{formatCurrency(bucket.weeklyContribution)}
-                      </span>
+                    {bucket.targetAmount > 0 && <ProgressBar progress={progress} color="primary" />}
+                    <div className="mt-3 flex justify-between font-mono text-[10px] tracking-[0.14em] uppercase">
+                      <span className="text-ink-500">▸ Weekly</span>
+                      <span className="text-phosphor-mint">+{formatCurrency(bucket.weeklyContribution)}</span>
                     </div>
-
                     {weeksToTarget > 0 && (
-                      <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                        ~{Math.ceil(weeksToTarget / 4)} months to target
+                      <div className="mt-1 font-mono text-[10px] tracking-[0.14em] uppercase text-ink-500">
+                        ▸ ~{Math.ceil(weeksToTarget / 4)} MO TO TARGET
                       </div>
                     )}
-
                     {bucket.targetDate && (
-                      <div className="mt-1 text-xs text-gray-500">
-                        Target: {new Date(bucket.targetDate).toLocaleDateString('en-NZ', {
-                          month: 'short',
-                          year: 'numeric',
-                        })}
+                      <div className="mt-1 font-mono text-[10px] tracking-[0.14em] uppercase text-ink-500">
+                        ▸ {new Date(bucket.targetDate).toLocaleDateString('en-NZ', { month: 'short', year: 'numeric' })}
                       </div>
                     )}
-                  </GlassCard>
+                  </Panel>
                 );
               })}
             </div>
@@ -240,25 +208,17 @@ export default function GoalsPage() {
 
       <TabBar />
 
-      {/* Goal Sheet */}
       <GoalSheet
         isOpen={showAddGoal || !!editingGoal}
-        onClose={() => {
-          setShowAddGoal(false);
-          setEditingGoal(null);
-        }}
+        onClose={() => { setShowAddGoal(false); setEditingGoal(null); }}
         goal={editingGoal}
         onSave={(data) => {
           if (editingGoal) {
-            dispatch({
-              type: 'UPDATE_GOAL',
-              payload: { id: editingGoal.id, updates: data },
-            });
+            dispatch({ type: 'UPDATE_GOAL', payload: { id: editingGoal.id, updates: data } });
           } else {
             dispatch({ type: 'ADD_GOAL', payload: data });
           }
-          setShowAddGoal(false);
-          setEditingGoal(null);
+          setShowAddGoal(false); setEditingGoal(null);
         }}
         onDelete={editingGoal ? () => {
           dispatch({ type: 'DELETE_GOAL', payload: editingGoal.id });
@@ -266,25 +226,17 @@ export default function GoalsPage() {
         } : undefined}
       />
 
-      {/* Bucket Sheet */}
       <BucketSheet
         isOpen={showAddBucket || !!editingBucket}
-        onClose={() => {
-          setShowAddBucket(false);
-          setEditingBucket(null);
-        }}
+        onClose={() => { setShowAddBucket(false); setEditingBucket(null); }}
         bucket={editingBucket}
         onSave={(data) => {
           if (editingBucket) {
-            dispatch({
-              type: 'UPDATE_SAVINGS_BUCKET',
-              payload: { id: editingBucket.id, updates: data },
-            });
+            dispatch({ type: 'UPDATE_SAVINGS_BUCKET', payload: { id: editingBucket.id, updates: data } });
           } else {
             dispatch({ type: 'ADD_SAVINGS_BUCKET', payload: data });
           }
-          setShowAddBucket(false);
-          setEditingBucket(null);
+          setShowAddBucket(false); setEditingBucket(null);
         }}
         onDelete={editingBucket ? () => {
           dispatch({ type: 'DELETE_SAVINGS_BUCKET', payload: editingBucket.id });
@@ -295,13 +247,10 @@ export default function GoalsPage() {
   );
 }
 
-// Goal Form Sheet
+// ----- Goal sheet -----------------------------------------------------------
+
 function GoalSheet({
-  isOpen,
-  onClose,
-  goal,
-  onSave,
-  onDelete,
+  isOpen, onClose, goal, onSave, onDelete,
 }: {
   isOpen: boolean;
   onClose: () => void;
@@ -332,7 +281,6 @@ function GoalSheet({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name) return;
-
     onSave({
       name,
       type,
@@ -345,37 +293,30 @@ function GoalSheet({
   };
 
   return (
-    <BottomSheet isOpen={isOpen} onClose={onClose} title={goal ? 'Edit Goal' : 'Add Goal'}>
+    <BottomSheet isOpen={isOpen} onClose={onClose} code="TGT" title={goal ? 'Edit Goal' : 'Add Goal'}>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Name</label>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="e.g., Emergency Fund, Paternity Leave"
-            className="ios-input"
-            required
-          />
+          <label className="term-label-plain block mb-1.5">▸ Name</label>
+          <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g., Emergency Fund" className="term-input" required />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Type</label>
+          <label className="term-label-plain block mb-1.5">▸ Type</label>
           <div className="grid grid-cols-2 gap-2">
             {([
-              { value: 'emergency_fund', label: 'Emergency Fund' },
+              { value: 'emergency_fund', label: 'Emergency' },
               { value: 'wealth', label: 'Wealth Target' },
-              { value: 'time_specific', label: 'Time Specific' },
-              { value: 'debt_free', label: 'Debt Free' },
+              { value: 'time_specific', label: 'Time Goal' },
+              { value: 'debt_free', label: 'Debt-Free' },
             ] as const).map((t) => (
               <button
                 key={t.value}
                 type="button"
                 onClick={() => setType(t.value)}
-                className={`py-2 px-3 rounded-ios text-sm font-medium transition-all ${
+                className={`py-2 px-3 font-mono text-[10px] tracking-[0.14em] uppercase border rounded-sm transition-all ${
                   type === t.value
-                    ? 'bg-ios-blue text-white'
-                    : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'
+                    ? 'border-phosphor-amber text-phosphor-amber bg-phosphor-amber/8'
+                    : 'border-graphite-600 text-ink-500 hover:text-ink-300 hover:border-graphite-500'
                 }`}
               >
                 {t.label}
@@ -386,108 +327,49 @@ function GoalSheet({
 
         {type === 'emergency_fund' && (
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Months of Expenses
-            </label>
-            <input
-              type="number"
-              value={monthsOfExpenses}
-              onChange={(e) => setMonthsOfExpenses(e.target.value)}
-              placeholder="6"
-              min="1"
-              max="24"
-              className="ios-input"
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              Target calculated from your &quot;necessity&quot; budget items
-            </p>
+            <label className="term-label-plain block mb-1.5">▸ Months of expenses</label>
+            <input type="number" value={monthsOfExpenses} onChange={(e) => setMonthsOfExpenses(e.target.value)} placeholder="6" min="1" max="24" className="term-input" />
+            <p className="text-[11px] text-ink-500 mt-1">Target = (necessity + cost) × months</p>
           </div>
         )}
 
         {type !== 'emergency_fund' && (
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Target Amount
-            </label>
-            <input
-              type="number"
-              value={targetAmount}
-              onChange={(e) => setTargetAmount(e.target.value)}
-              placeholder="10000"
-              step="1"
-              min="0"
-              className="ios-input"
-            />
+            <label className="term-label-plain block mb-1.5">▸ Target amount</label>
+            <input type="number" value={targetAmount} onChange={(e) => setTargetAmount(e.target.value)} placeholder="10000" step="1" min="0" className="term-input" />
           </div>
         )}
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-            Current Amount Saved
-          </label>
-          <input
-            type="number"
-            value={currentAmount}
-            onChange={(e) => setCurrentAmount(e.target.value)}
-            placeholder="0"
-            step="0.01"
-            min="0"
-            className="ios-input"
-          />
+          <label className="term-label-plain block mb-1.5">▸ Current amount</label>
+          <input type="number" value={currentAmount} onChange={(e) => setCurrentAmount(e.target.value)} placeholder="0" step="0.01" min="0" className="term-input" />
         </div>
 
         {(type === 'time_specific' || type === 'wealth') && (
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Target Date (optional)
-            </label>
-            <input
-              type="date"
-              value={targetDate}
-              onChange={(e) => setTargetDate(e.target.value)}
-              className="ios-input"
-            />
+            <label className="term-label-plain block mb-1.5">▸ Target date (optional)</label>
+            <input type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} className="term-input" />
           </div>
         )}
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-            Notes (optional)
-          </label>
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="Any details about this goal..."
-            className="ios-input min-h-[60px] resize-none"
-          />
+          <label className="term-label-plain block mb-1.5">▸ Notes (optional)</label>
+          <textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="term-input min-h-[60px] resize-none" />
         </div>
 
-        <div className="flex gap-3 pt-4">
-          {onDelete && (
-            <button
-              type="button"
-              onClick={onDelete}
-              className="px-6 py-3 rounded-ios font-semibold text-ios-red bg-ios-red/10"
-            >
-              Delete
-            </button>
-          )}
-          <button type="submit" className="ios-button flex-1">
-            {goal ? 'Save Changes' : 'Add Goal'}
-          </button>
+        <div className="flex gap-3 pt-3">
+          {onDelete && <button type="button" onClick={onDelete} className="term-btn-danger">Delete</button>}
+          <button type="submit" className="term-btn flex-1">▸ {goal ? 'Save' : 'Add'}</button>
         </div>
       </form>
     </BottomSheet>
   );
 }
 
-// Savings Bucket Form Sheet
+// ----- Bucket sheet ---------------------------------------------------------
+
 function BucketSheet({
-  isOpen,
-  onClose,
-  bucket,
-  onSave,
-  onDelete,
+  isOpen, onClose, bucket, onSave, onDelete,
 }: {
   isOpen: boolean;
   onClose: () => void;
@@ -516,7 +398,6 @@ function BucketSheet({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name) return;
-
     onSave({
       name,
       targetAmount: parseFloat(targetAmount) || 0,
@@ -528,103 +409,37 @@ function BucketSheet({
   };
 
   return (
-    <BottomSheet isOpen={isOpen} onClose={onClose} title={bucket ? 'Edit Bucket' : 'Add Savings Bucket'}>
+    <BottomSheet isOpen={isOpen} onClose={onClose} code="BKT" title={bucket ? 'Edit Bucket' : 'Add Bucket'}>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Name</label>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="e.g., Travel, Technology, Paternity"
-            className="ios-input"
-            required
-          />
+          <label className="term-label-plain block mb-1.5">▸ Name</label>
+          <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g., Travel, Tech" className="term-input" required />
         </div>
-
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Target Amount
-            </label>
-            <input
-              type="number"
-              value={targetAmount}
-              onChange={(e) => setTargetAmount(e.target.value)}
-              placeholder="5000"
-              step="1"
-              min="0"
-              className="ios-input"
-            />
+            <label className="term-label-plain block mb-1.5">▸ Target</label>
+            <input type="number" value={targetAmount} onChange={(e) => setTargetAmount(e.target.value)} placeholder="5000" step="1" min="0" className="term-input" />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Current Amount
-            </label>
-            <input
-              type="number"
-              value={currentAmount}
-              onChange={(e) => setCurrentAmount(e.target.value)}
-              placeholder="0"
-              step="0.01"
-              min="0"
-              className="ios-input"
-            />
+            <label className="term-label-plain block mb-1.5">▸ Current</label>
+            <input type="number" value={currentAmount} onChange={(e) => setCurrentAmount(e.target.value)} placeholder="0" step="0.01" min="0" className="term-input" />
           </div>
         </div>
-
         <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-            Weekly Contribution
-          </label>
-          <input
-            type="number"
-            value={weeklyContribution}
-            onChange={(e) => setWeeklyContribution(e.target.value)}
-            placeholder="50"
-            step="0.01"
-            min="0"
-            className="ios-input"
-          />
+          <label className="term-label-plain block mb-1.5">▸ Weekly contribution</label>
+          <input type="number" value={weeklyContribution} onChange={(e) => setWeeklyContribution(e.target.value)} placeholder="50" step="0.01" min="0" className="term-input" />
         </div>
-
         <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-            Target Date (optional)
-          </label>
-          <input
-            type="date"
-            value={targetDate}
-            onChange={(e) => setTargetDate(e.target.value)}
-            className="ios-input"
-          />
+          <label className="term-label-plain block mb-1.5">▸ Target date (optional)</label>
+          <input type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} className="term-input" />
         </div>
-
         <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-            Notes (optional)
-          </label>
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="What is this bucket for?"
-            className="ios-input min-h-[60px] resize-none"
-          />
+          <label className="term-label-plain block mb-1.5">▸ Notes (optional)</label>
+          <textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="term-input min-h-[60px] resize-none" />
         </div>
-
-        <div className="flex gap-3 pt-4">
-          {onDelete && (
-            <button
-              type="button"
-              onClick={onDelete}
-              className="px-6 py-3 rounded-ios font-semibold text-ios-red bg-ios-red/10"
-            >
-              Delete
-            </button>
-          )}
-          <button type="submit" className="ios-button flex-1">
-            {bucket ? 'Save Changes' : 'Add Bucket'}
-          </button>
+        <div className="flex gap-3 pt-3">
+          {onDelete && <button type="button" onClick={onDelete} className="term-btn-danger">Delete</button>}
+          <button type="submit" className="term-btn flex-1">▸ {bucket ? 'Save' : 'Add'}</button>
         </div>
       </form>
     </BottomSheet>

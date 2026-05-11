@@ -2,24 +2,29 @@
 
 import React, { useState } from 'react';
 import TabBar from '@/components/TabBar';
-import GlassCard, { CardHeader } from '@/components/GlassCard';
+import Panel, { CardHeader, FitNumber, StatusDot, ProgressBar } from '@/components/GlassCard';
 import BottomSheet from '@/components/BottomSheet';
-import { WealthLineGraph } from '@/components/Charts';
+import { WealthLineGraph, DrawdownBands } from '@/components/Charts';
 import { useBudget } from '@/lib/context';
 import { Investment, Mortgage, HouseExpense } from '@/types/budget';
 import {
   formatCurrency,
+  formatCurrencyCompact,
   formatPercent,
   projectInvestment,
-  projectWealthAtAge,
   calculateMortgagePayoff,
   mortgageExtraPaymentImpact,
-  cumulativeSavings,
   projectCurrentInvestmentValue,
   projectCurrentMortgageBalance,
   generateWealthProjection,
   formatRelativeTime,
   calculateSharedHousing,
+  generateDrawdownProjection,
+  getCurrentAge,
+  yearsUntilRetirement,
+  yearsInRetirement,
+  mortgageYearsElapsed,
+  mortgageProgressPercent,
 } from '@/lib/calculations';
 
 export default function WealthPage() {
@@ -33,22 +38,19 @@ export default function WealthPage() {
 
   if (!isLoaded) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="glass-card p-8">
-          <div className="shimmer w-32 h-6 rounded" />
-        </div>
-      </div>
+      <main className="min-h-screen flex items-center justify-center">
+        <div className="font-mono text-xs tracking-[0.2em] text-phosphor-amber caret-blink">LOADING WLT MODULE</div>
+      </main>
     );
   }
 
   const { settings, investments, mortgages, sharedHousing } = store;
+  const currentAge = getCurrentAge(settings);
 
-  // Calculate totals with projected values
   const investmentProjections = investments.map((inv) => ({
     ...inv,
     projectedValue: projectCurrentInvestmentValue(inv).projectedValue,
   }));
-
   const mortgageProjections = mortgages.map((m) => ({
     ...m,
     projectedBalance: projectCurrentMortgageBalance(m).projectedBalance,
@@ -59,181 +61,143 @@ export default function WealthPage() {
   const totalMortgageBalance = mortgageProjections.reduce((sum, m) => sum + m.projectedBalance, 0);
   const totalPropertyValue = mortgages.reduce((sum, m) => sum + (m.propertyValue || 0), 0);
   const totalEquity = totalPropertyValue - totalMortgageBalance;
+  const netWealth = totalInvestmentValue + totalEquity;
 
-  // Projections
-  const yearsToRetirement = settings.retirementAge - settings.age;
-  const wealth1Year = projectWealthAtAge(settings.age, settings.age + 1, investments, mortgages, settings.inflationRate);
-  const wealth5Year = projectWealthAtAge(settings.age, settings.age + 5, investments, mortgages, settings.inflationRate);
-  const wealthRetirement = projectWealthAtAge(settings.age, settings.retirementAge, investments, mortgages, settings.inflationRate);
+  const yrsToRet = yearsUntilRetirement(settings);
+  const yrsInRet = yearsInRetirement(settings);
 
-  // Generate wealth projection data for line graph
-  const wealthProjectionData = generateWealthProjection(
-    settings.age,
-    settings.retirementAge,
-    investments,
-    mortgages,
-    totalPropertyValue,
-    settings.inflationRate
-  );
+  const drawdown = (investments.length > 0 || totalPropertyValue > 0) && currentAge > 0
+    ? generateDrawdownProjection(settings, investments, mortgages, totalPropertyValue)
+    : null;
 
-  // Average expected return
-  const avgReturn = investments.length > 0
-    ? investments.reduce((sum, inv) => sum + inv.expectedReturnRate * inv.weeklyContribution, 0) /
-      Math.max(1, totalWeeklyContributions)
-    : 0;
+  const wealthProjectionData = currentAge > 0
+    ? generateWealthProjection(currentAge, settings.retirementAge, investments, mortgages, totalPropertyValue, settings.inflationRate)
+    : [];
 
-  // Shared housing calculations
   const housingCalc = sharedHousing?.enabled
     ? calculateSharedHousing(sharedHousing, settings.afterTaxWeeklyIncome)
     : null;
 
   return (
     <main className="min-h-screen pb-24 safe-top">
-      <div className="max-w-4xl mx-auto px-4 py-6">
-        {/* Header */}
-        <header className="mb-6">
-          <h1 className="text-2xl font-bold text-white">Wealth</h1>
-          <p className="text-white/70 text-sm">Investments, mortgage &amp; projections</p>
+      <div className="max-w-5xl mx-auto px-4 py-5">
+        <header className="mb-5">
+          <div className="font-mono text-[10px] tracking-[0.24em] text-phosphor-amber/80 uppercase flex items-center gap-2">
+            <StatusDot color="amber" pulse /> WEALTH · PROJECTIONS
+          </div>
+          <h1 className="font-serif text-[36px] leading-none text-ink-100 mt-1">
+            Wealth<span className="text-phosphor-amber">.</span>
+          </h1>
         </header>
 
-        {/* Net Worth Summary */}
-        <GlassCard variant="wide" className="mb-6">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Current Net Wealth</p>
-              <p className="text-3xl font-bold money-display text-gray-900 dark:text-white">
-                {formatCurrency(totalInvestmentValue + totalEquity, false)}
-              </p>
-              {totalPropertyValue > 0 && (
-                <p className="text-xs text-gray-500 mt-1">
-                  Investments: {formatCurrency(totalInvestmentValue, false)} | Equity: {formatCurrency(totalEquity, false)}
-                </p>
-              )}
+        {/* Net wealth headline */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+          <Panel className="lg:col-span-2" brackets scan>
+            <CardHeader title="Net Wealth · Today" subtitle="Investments + property − debt" />
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+              <Stat label="Total" value={formatCurrencyCompact(netWealth)} accent="amber" size={36} />
+              <Stat label="Investments" value={formatCurrencyCompact(totalInvestmentValue)} accent="cyan" />
+              <Stat label="Equity" value={formatCurrencyCompact(totalEquity)} accent="violet" />
             </div>
-            <div className="text-right">
-              <p className="text-sm text-gray-500 dark:text-gray-400">At {settings.retirementAge} (real)</p>
-              <p className="text-3xl font-bold money-display text-ios-green">
-                {formatCurrency(wealthRetirement.netWealthReal, false)}
-              </p>
-            </div>
-          </div>
+          </Panel>
 
-          <div className="grid grid-cols-3 gap-3 mt-4">
-            <div className="text-center p-2 rounded-ios bg-ios-blue/10">
-              <p className="text-xs text-ios-blue">1 Year</p>
-              <p className="font-semibold money-display">{formatCurrency(wealth1Year.netWealthReal, false)}</p>
-            </div>
-            <div className="text-center p-2 rounded-ios bg-ios-purple/10">
-              <p className="text-xs text-ios-purple">5 Years</p>
-              <p className="font-semibold money-display">{formatCurrency(wealth5Year.netWealthReal, false)}</p>
-            </div>
-            <div className="text-center p-2 rounded-ios bg-ios-green/10">
-              <p className="text-xs text-ios-green">{yearsToRetirement} Years</p>
-              <p className="font-semibold money-display">{formatCurrency(wealthRetirement.netWealthReal, false)}</p>
-            </div>
-          </div>
-        </GlassCard>
+          <Panel brackets glow>
+            <CardHeader title={`Drawdown · ${settings.retirementAge}→${settings.lifeExpectancy}`} subtitle={`${Math.round(yrsToRet)} yr horizon · ${yrsInRet} yr retirement`} />
+            {drawdown ? (
+              <>
+                <FitNumber
+                  value={`${formatCurrency(drawdown.expectedWeekly)}/wk`}
+                  baseSize={32}
+                  minSize={18}
+                  className="text-phosphor-amber mono-num-glow font-medium"
+                />
+                <div className="font-mono text-[10px] tracking-[0.16em] uppercase text-ink-500 mt-1.5 mb-3">
+                  REAL · {formatCurrency(drawdown.monthlyDrawdownReal)}/MO · {formatCurrency(drawdown.yearlyDrawdownReal, false)}/YR
+                </div>
+                <DrawdownBands
+                  conservative={drawdown.conservativeWeekly}
+                  expected={drawdown.expectedWeekly}
+                  optimistic={drawdown.optimisticWeekly}
+                  format={(n) => formatCurrency(n)}
+                />
+                <div className="mt-3 text-[10px] font-mono tracking-[0.14em] uppercase text-ink-500 leading-relaxed">
+                  ▸ Portfolio at retirement: {formatCurrencyCompact(drawdown.portfolioAtRetirementReal)} (real). Bands = SWR ±1.5%.
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-ink-500 py-4">
+                Add investments or property to compute a sustainable drawdown.
+              </p>
+            )}
+          </Panel>
+        </div>
 
-        {/* Wealth Projection Graph */}
-        {investments.length > 0 && (
-          <GlassCard variant="wide" className="mb-6">
-            <CardHeader title="Wealth Projection" subtitle="Net wealth over time (inflation-adjusted)" />
-            <WealthLineGraph data={wealthProjectionData} height={180} />
-          </GlassCard>
+        {/* Trajectory chart */}
+        {wealthProjectionData.length > 1 && (
+          <Panel brackets className="mb-6">
+            <CardHeader title="Trajectory · Inflation-Adjusted" subtitle={`Age ${currentAge} → ${settings.retirementAge}`} />
+            <WealthLineGraph data={wealthProjectionData} height={220} />
+          </Panel>
         )}
 
-        {/* Investments Section */}
-        <section className="mb-8">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-lg font-semibold text-white">Investments</h2>
-            <button
-              onClick={() => setShowAddInvestment(true)}
-              className="px-3 py-1.5 rounded-full bg-white/20 text-white text-sm font-medium"
-            >
-              + Add
-            </button>
-          </div>
+        {/* Investments */}
+        <section className="mb-6">
+          <SectionHeader code="INV" title="Investments" onAdd={() => setShowAddInvestment(true)} />
 
           {investments.length === 0 ? (
-            <GlassCard>
-              <p className="text-center text-gray-500 dark:text-gray-400 py-6">
-                No investments tracked yet. Add your ETFs, KiwiSaver, etc.
-              </p>
-            </GlassCard>
+            <Panel><p className="text-center text-ink-500 py-6 text-sm">No investments tracked. Add ETFs, KiwiSaver, etc.</p></Panel>
           ) : (
             <div className="space-y-3">
               {investmentProjections.map((inv) => {
-                const projection = projectInvestment(inv, yearsToRetirement, settings.inflationRate);
+                const projection = projectInvestment(inv, yrsToRet, settings.inflationRate);
                 const valueChanged = inv.projectedValue !== inv.currentValue;
-
                 return (
-                  <GlassCard key={inv.id} onClick={() => setEditingInvestment(inv)}>
-                    <div className="flex items-start justify-between mb-2">
-                      <div>
-                        <h3 className="font-semibold text-gray-900 dark:text-white">{inv.name}</h3>
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-ios-blue/10 text-ios-blue">
-                          {inv.type === 'kiwisaver' ? 'KiwiSaver' : inv.type === 'etf' ? 'ETF' : 'Other'}
-                        </span>
+                  <Panel key={inv.id} onClick={() => setEditingInvestment(inv)}>
+                    <div className="flex items-start justify-between gap-3 mb-2">
+                      <div className="min-w-0">
+                        <h3 className="text-ink-100 font-medium truncate">{inv.name}</h3>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="pill pill-cyan">
+                            {inv.type === 'kiwisaver' ? 'KIWISAVER' : inv.type === 'etf' ? 'ETF' : 'OTHER'}
+                          </span>
+                          {inv.currentValueUpdatedAt && (
+                            <span className="font-mono text-[10px] tracking-[0.14em] uppercase text-ink-500">
+                              {valueChanged ? 'PROJ' : 'UPD'} {formatRelativeTime(inv.currentValueUpdatedAt)}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <p className="font-bold text-lg money-display">
-                          {formatCurrency(inv.projectedValue, false)}
-                        </p>
-                        {inv.currentValueUpdatedAt && (
-                          <p className="text-xs text-gray-500">
-                            {valueChanged ? 'projected' : 'updated'} {formatRelativeTime(inv.currentValueUpdatedAt)}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-2 text-sm">
-                      <div>
-                        <p className="text-gray-500 dark:text-gray-400">Weekly</p>
-                        <p className="font-medium money-display">{formatCurrency(inv.weeklyContribution)}</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-500 dark:text-gray-400">Return</p>
-                        <p className="font-medium">{formatPercent(inv.expectedReturnRate)}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-gray-500 dark:text-gray-400">At {settings.retirementAge}</p>
-                        <p className="font-medium text-ios-green money-display">
-                          {formatCurrency(projection.real, false)}
-                        </p>
+                      <div className="text-right shrink-0">
+                        <FitNumber
+                          value={formatCurrencyCompact(inv.projectedValue)}
+                          baseSize={22}
+                          minSize={14}
+                          className="text-ink-100 font-medium"
+                        />
                       </div>
                     </div>
-                  </GlassCard>
+                    <div className="grid grid-cols-3 gap-3 mt-3 pt-3 border-t border-graphite-600">
+                      <MiniStat label="Weekly" value={formatCurrency(inv.weeklyContribution)} />
+                      <MiniStat label="Return" value={formatPercent(inv.expectedReturnRate)} />
+                      <MiniStat label={`At ${settings.retirementAge}`} value={formatCurrencyCompact(projection.real)} accent="mint" />
+                    </div>
+                  </Panel>
                 );
               })}
-
-              {/* Total Row */}
-              <div className="flex justify-between items-center px-4 py-2 text-white/80">
-                <span className="text-sm">Total Weekly Contributions:</span>
-                <span className="font-semibold money-display">{formatCurrency(totalWeeklyContributions)}</span>
+              <div className="flex justify-between font-mono text-[10px] tracking-[0.18em] uppercase text-ink-500 px-2 pt-1">
+                <span>▸ Total weekly contributions</span>
+                <span className="text-ink-100">{formatCurrency(totalWeeklyContributions)}</span>
               </div>
             </div>
           )}
         </section>
 
-        {/* Mortgages Section */}
-        <section className="mb-8">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-lg font-semibold text-white">Mortgage</h2>
-            <button
-              onClick={() => setShowAddMortgage(true)}
-              className="px-3 py-1.5 rounded-full bg-white/20 text-white text-sm font-medium"
-            >
-              + Add
-            </button>
-          </div>
+        {/* Mortgages */}
+        <section className="mb-6">
+          <SectionHeader code="MTG" title="Mortgage" onAdd={() => setShowAddMortgage(true)} />
 
           {mortgages.length === 0 ? (
-            <GlassCard>
-              <p className="text-center text-gray-500 dark:text-gray-400 py-6">
-                No mortgage tracked. Add one to see payoff projections.
-              </p>
-            </GlassCard>
+            <Panel><p className="text-center text-ink-500 py-6 text-sm">No mortgage tracked.</p></Panel>
           ) : (
             <div className="space-y-3">
               {mortgageProjections.map((mortgage) => {
@@ -241,301 +205,216 @@ export default function WealthPage() {
                 const extra50Impact = mortgageExtraPaymentImpact(mortgage, 50);
                 const balanceChanged = mortgage.projectedBalance !== mortgage.principal;
                 const equity = (mortgage.propertyValue || 0) - mortgage.projectedBalance;
+                const elapsed = mortgageYearsElapsed(mortgage);
+                const progressPct = mortgageProgressPercent(mortgage);
 
                 return (
-                  <GlassCard key={mortgage.id} onClick={() => setEditingMortgage(mortgage)}>
-                    <div className="flex items-start justify-between mb-3">
-                      <div>
-                        <h3 className="font-semibold text-gray-900 dark:text-white">{mortgage.name}</h3>
-                        <p className="text-sm text-gray-500">
-                          {formatPercent(mortgage.interestRate)} interest
-                        </p>
+                  <Panel key={mortgage.id} onClick={() => setEditingMortgage(mortgage)}>
+                    <div className="flex items-start justify-between gap-3 mb-3">
+                      <div className="min-w-0">
+                        <h3 className="text-ink-100 font-medium truncate">{mortgage.name}</h3>
+                        <div className="font-mono text-[10px] tracking-[0.14em] uppercase text-ink-500 mt-1">
+                          {formatPercent(mortgage.interestRate)} · {mortgage.termYears}YR TERM · {elapsed.toFixed(1)}YR ELAPSED
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <p className="font-bold text-lg money-display text-ios-red">
-                          {formatCurrency(mortgage.projectedBalance, false)}
-                        </p>
+                      <div className="text-right shrink-0">
+                        <FitNumber
+                          value={formatCurrencyCompact(mortgage.projectedBalance)}
+                          baseSize={22}
+                          minSize={14}
+                          className="text-phosphor-red font-medium"
+                        />
                         {mortgage.principalUpdatedAt && (
-                          <p className="text-xs text-gray-500">
-                            {balanceChanged ? 'projected' : 'updated'} {formatRelativeTime(mortgage.principalUpdatedAt)}
-                          </p>
+                          <div className="font-mono text-[10px] tracking-[0.14em] uppercase text-ink-500 mt-1">
+                            {balanceChanged ? 'PROJ' : 'UPD'} {formatRelativeTime(mortgage.principalUpdatedAt)}
+                          </div>
                         )}
                       </div>
                     </div>
 
+                    <div className="mb-3">
+                      <div className="flex justify-between font-mono text-[10px] tracking-[0.16em] uppercase text-ink-500 mb-1">
+                        <span>▸ Paid off {progressPct.toFixed(0)}%</span>
+                        <span>{formatCurrencyCompact(mortgage.originalPrincipal - mortgage.projectedBalance)} of {formatCurrencyCompact(mortgage.originalPrincipal)}</span>
+                      </div>
+                      <ProgressBar progress={progressPct} color="amber" />
+                    </div>
+
                     {mortgage.propertyValue && mortgage.propertyValue > 0 && (
-                      <div className="mb-3 p-2 rounded-ios bg-ios-purple/10">
-                        <div className="flex justify-between text-sm">
-                          <span className="text-ios-purple">Property Value</span>
-                          <span className="font-medium">{formatCurrency(mortgage.propertyValue, false)}</span>
-                        </div>
-                        <div className="flex justify-between text-sm mt-1">
-                          <span className="text-ios-purple">Equity</span>
-                          <span className="font-medium text-ios-green">{formatCurrency(equity, false)}</span>
-                        </div>
+                      <div className="grid grid-cols-2 gap-3 mb-3">
+                        <MiniStat label="CV" value={formatCurrencyCompact(mortgage.propertyValue)} accent="violet" />
+                        <MiniStat label="Equity" value={formatCurrencyCompact(equity)} accent="mint" />
                       </div>
                     )}
 
-                    <div className="grid grid-cols-2 gap-4 mb-3">
-                      <div>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">Weekly Payment</p>
-                        <p className="font-medium money-display">
-                          {formatCurrency(mortgage.weeklyPayment + mortgage.extraWeeklyPayment)}
-                          {mortgage.extraWeeklyPayment > 0 && (
-                            <span className="text-ios-green text-xs ml-1">
-                              (+{formatCurrency(mortgage.extraWeeklyPayment)} extra)
-                            </span>
-                          )}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm text-gray-500 dark:text-gray-400">Paid Off</p>
-                        <p className="font-medium">
-                          {payoff.payoffDate.toLocaleDateString('en-NZ', {
-                            month: 'short',
-                            year: 'numeric',
-                          })}
-                        </p>
-                      </div>
+                    <div className="grid grid-cols-2 gap-3 mb-3">
+                      <MiniStat
+                        label="Weekly"
+                        value={`${formatCurrency(mortgage.weeklyPayment + mortgage.extraWeeklyPayment)}${mortgage.extraWeeklyPayment > 0 ? ` (+${formatCurrency(mortgage.extraWeeklyPayment)})` : ''}`}
+                      />
+                      <MiniStat
+                        label="Clears"
+                        value={payoff.payoffDate.toLocaleDateString('en-NZ', { month: 'short', year: 'numeric' })}
+                      />
                     </div>
 
-                    <div className="p-3 rounded-ios bg-ios-green/10 text-sm">
-                      <p className="text-ios-green font-medium">
-                        +$50/week extra = {Math.floor(extra50Impact.monthsSaved / 12)} years,{' '}
-                        {extra50Impact.monthsSaved % 12} months saved
-                      </p>
-                      <p className="text-gray-600 dark:text-gray-400">
-                        Saves {formatCurrency(extra50Impact.interestSaved, false)} in interest
-                      </p>
+                    <div className="border-l-2 border-phosphor-mint/40 pl-3 py-1.5 bg-phosphor-mint/[0.04] rounded-r-sm">
+                      <div className="font-mono text-[10px] tracking-[0.16em] uppercase text-phosphor-mint">▸ Acceleration scenario</div>
+                      <div className="text-sm text-ink-100 mt-0.5">
+                        +$50/wk extra → {Math.floor(extra50Impact.monthsSaved / 12)}y {extra50Impact.monthsSaved % 12}m sooner
+                      </div>
+                      <div className="text-xs text-ink-500">Saves {formatCurrency(extra50Impact.interestSaved, false)} interest</div>
                     </div>
-                  </GlassCard>
+                  </Panel>
                 );
               })}
             </div>
           )}
         </section>
 
-        {/* Shared Housing Section */}
-        <section className="mb-8">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-lg font-semibold text-white">Shared Housing</h2>
+        {/* Shared housing */}
+        <section className="mb-6">
+          <div className="flex justify-between items-center mb-3">
+            <div className="font-mono text-[11px] tracking-[0.22em] uppercase text-ink-100 flex items-center gap-2">
+              <span className="font-mono text-[9px] tracking-[0.2em] uppercase text-phosphor-amber px-1.5 py-0.5 border border-phosphor-amber/40 rounded-sm">SHR</span>
+              Shared Household
+            </div>
             <button
               onClick={() => {
                 if (!sharedHousing?.enabled) {
-                  dispatch({
-                    type: 'UPDATE_SHARED_HOUSING',
-                    payload: { enabled: true },
-                  });
+                  dispatch({ type: 'UPDATE_SHARED_HOUSING', payload: { enabled: true } });
                 }
               }}
-              className="px-3 py-1.5 rounded-full bg-white/20 text-white text-sm font-medium"
+              className="term-btn-ghost text-[10px]"
             >
-              {sharedHousing?.enabled ? 'Settings' : 'Enable'}
+              {sharedHousing?.enabled ? '▸ Settings' : '▸ Enable'}
             </button>
           </div>
 
           {!sharedHousing?.enabled ? (
-            <GlassCard>
-              <p className="text-center text-gray-500 dark:text-gray-400 py-6">
-                Enable shared housing to split expenses equitably with your partner based on income ratios.
-              </p>
-            </GlassCard>
+            <Panel><p className="text-center text-ink-500 py-6 text-sm">Enable to split expenses with your partner by income ratio.</p></Panel>
           ) : (
             <div className="space-y-3">
-              {/* Partner Settings */}
-              <GlassCard>
+              <Panel>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">Partner Name</label>
+                    <label className="term-label-plain block mb-1.5">▸ Partner name</label>
                     <input
                       type="text"
                       value={sharedHousing.partnerName || ''}
-                      onChange={(e) =>
-                        dispatch({
-                          type: 'UPDATE_SHARED_HOUSING',
-                          payload: { partnerName: e.target.value },
-                        })
-                      }
+                      onChange={(e) => dispatch({ type: 'UPDATE_SHARED_HOUSING', payload: { partnerName: e.target.value } })}
                       placeholder="Partner"
-                      className="ios-input text-sm"
+                      className="term-input"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">Partner Weekly Income</label>
+                    <label className="term-label-plain block mb-1.5">▸ Partner weekly income</label>
                     <input
                       type="number"
                       value={sharedHousing.partnerWeeklyIncome || ''}
-                      onChange={(e) =>
-                        dispatch({
-                          type: 'UPDATE_SHARED_HOUSING',
-                          payload: { partnerWeeklyIncome: parseFloat(e.target.value) || 0 },
-                        })
-                      }
+                      onChange={(e) => dispatch({ type: 'UPDATE_SHARED_HOUSING', payload: { partnerWeeklyIncome: parseFloat(e.target.value) || 0 } })}
                       placeholder="0"
                       step="0.01"
                       min="0"
-                      className="ios-input text-sm"
+                      className="term-input"
                     />
                   </div>
                 </div>
 
                 {housingCalc && housingCalc.combinedWeeklyIncome > 0 && (
-                  <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <p className="text-gray-500">Your Share</p>
-                        <p className="font-semibold text-lg">
-                          {((settings.afterTaxWeeklyIncome / housingCalc.combinedWeeklyIncome) * 100).toFixed(0)}%
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-gray-500">{sharedHousing.partnerName || 'Partner'}&apos;s Share</p>
-                        <p className="font-semibold text-lg">
-                          {((sharedHousing.partnerWeeklyIncome / housingCalc.combinedWeeklyIncome) * 100).toFixed(0)}%
-                        </p>
-                      </div>
-                    </div>
+                  <div className="mt-4 pt-4 border-t border-graphite-600 grid grid-cols-2 gap-4">
+                    <MiniStat
+                      label="Your share"
+                      value={`${((settings.afterTaxWeeklyIncome / housingCalc.combinedWeeklyIncome) * 100).toFixed(0)}%`}
+                      accent="cyan"
+                    />
+                    <MiniStat
+                      label={`${sharedHousing.partnerName || 'Partner'}'s share`}
+                      value={`${((sharedHousing.partnerWeeklyIncome / housingCalc.combinedWeeklyIncome) * 100).toFixed(0)}%`}
+                      accent="violet"
+                    />
                   </div>
                 )}
-              </GlassCard>
+              </Panel>
 
-              {/* Expenses List */}
-              <div className="flex justify-between items-center mt-4">
-                <h3 className="text-sm font-medium text-white/80">Shared Expenses</h3>
-                <button
-                  onClick={() => setShowAddHouseExpense(true)}
-                  className="text-xs px-2 py-1 rounded-full bg-white/20 text-white"
-                >
-                  + Add
-                </button>
+              <div className="flex justify-between items-center pt-2">
+                <span className="font-mono text-[10px] tracking-[0.18em] uppercase text-ink-500">▸ Shared expenses</span>
+                <button onClick={() => setShowAddHouseExpense(true)} className="term-btn-ghost text-[10px]">▸ Add</button>
               </div>
 
               {sharedHousing.expenses.length === 0 ? (
-                <GlassCard>
-                  <p className="text-center text-gray-500 dark:text-gray-400 py-4 text-sm">
-                    No shared expenses. Add rent, utilities, etc.
-                  </p>
-                </GlassCard>
+                <Panel><p className="text-center text-ink-500 py-4 text-sm">No shared expenses yet.</p></Panel>
               ) : (
                 <div className="space-y-2">
                   {sharedHousing.expenses.map((expense) => {
-                    const weeklyAmount =
-                      expense.frequency === 'monthly'
-                        ? (expense.amount * 12) / 52
-                        : expense.frequency === 'yearly'
-                        ? expense.amount / 52
-                        : expense.amount;
+                    const weeklyAmount = expense.frequency === 'monthly' ? (expense.amount * 12) / 52 : expense.frequency === 'yearly' ? expense.amount / 52 : expense.amount;
                     const incomeRatio = housingCalc?.combinedWeeklyIncome && housingCalc.combinedWeeklyIncome > 0
                       ? settings.afterTaxWeeklyIncome / housingCalc.combinedWeeklyIncome
                       : 0.5;
                     const yourPortion = weeklyAmount * incomeRatio;
-
+                    const partnerPortion = weeklyAmount - yourPortion;
                     return (
-                      <GlassCard
-                        key={expense.id}
-                        onClick={() => setEditingHouseExpense(expense)}
-                      >
-                        <div className="flex justify-between items-center">
-                          <div>
-                            <p className="font-medium text-gray-900 dark:text-white">{expense.name}</p>
-                            <p className="text-xs text-gray-500">
+                      <Panel key={expense.id} onClick={() => setEditingHouseExpense(expense)}>
+                        <div className="flex justify-between items-start gap-3">
+                          <div className="min-w-0">
+                            <p className="text-ink-100 font-medium truncate">{expense.name}</p>
+                            <div className="font-mono text-[10px] tracking-[0.14em] uppercase text-ink-500 mt-0.5">
                               {formatCurrency(expense.amount)}/{expense.frequency}
-                            </p>
+                            </div>
                           </div>
-                          <div className="text-right">
-                            <p className="font-semibold money-display">{formatCurrency(yourPortion)}</p>
-                            <p className="text-xs text-gray-500">your share/week</p>
+                          <div className="text-right shrink-0">
+                            <div className="mono-num text-ink-100">{formatCurrency(yourPortion)}</div>
+                            <div className="font-mono text-[10px] tracking-[0.14em] uppercase text-ink-500 mt-0.5">YOUR SHARE/WK</div>
                           </div>
                         </div>
-                      </GlassCard>
+                        <div className="split-bar mt-2.5">
+                          <div style={{ width: `${incomeRatio * 100}%`, background: '#5BC8FF', boxShadow: '0 0 4px #5BC8FF' }} />
+                          <div style={{ width: `${(1 - incomeRatio) * 100}%`, background: '#C599FF', boxShadow: '0 0 4px #C599FF' }} />
+                        </div>
+                        <div className="flex justify-between font-mono text-[9px] tracking-[0.14em] uppercase text-ink-500 mt-1.5">
+                          <span className="text-phosphor-cyan/80">YOU {formatCurrency(yourPortion)}</span>
+                          <span className="text-phosphor-violet/80">{sharedHousing.partnerName?.toUpperCase() || 'PTNR'} {formatCurrency(partnerPortion)}</span>
+                        </div>
+                      </Panel>
                     );
                   })}
 
-                  {/* Totals */}
                   {housingCalc && (
-                    <div className="px-4 py-3 rounded-ios bg-white/5">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-white/70">Total Weekly Expenses</span>
-                        <span className="font-semibold text-white">{formatCurrency(housingCalc.totalWeeklyExpenses)}</span>
+                    <Panel raised>
+                      <div className="grid grid-cols-3 gap-3">
+                        <MiniStat label="Total/wk" value={formatCurrency(housingCalc.totalWeeklyExpenses)} accent="amber" />
+                        <MiniStat label="You" value={formatCurrency(housingCalc.yourShare)} accent="cyan" />
+                        <MiniStat label={sharedHousing.partnerName || 'Partner'} value={formatCurrency(housingCalc.partnerShare)} accent="violet" />
                       </div>
-                      <div className="flex justify-between text-sm mt-1">
-                        <span className="text-white/70">Your Weekly Share</span>
-                        <span className="font-semibold text-ios-blue">{formatCurrency(housingCalc.yourShare)}</span>
-                      </div>
-                      <div className="flex justify-between text-sm mt-1">
-                        <span className="text-white/70">{sharedHousing.partnerName || 'Partner'}&apos;s Share</span>
-                        <span className="font-semibold text-ios-purple">{formatCurrency(housingCalc.partnerShare)}</span>
-                      </div>
-                    </div>
+                    </Panel>
                   )}
                 </div>
               )}
 
-              {/* Disable button */}
               <button
-                onClick={() =>
-                  dispatch({
-                    type: 'UPDATE_SHARED_HOUSING',
-                    payload: { enabled: false },
-                  })
-                }
-                className="w-full text-center text-sm text-ios-red py-2"
+                onClick={() => dispatch({ type: 'UPDATE_SHARED_HOUSING', payload: { enabled: false } })}
+                className="w-full text-center font-mono text-[10px] tracking-[0.18em] uppercase text-phosphor-red/70 hover:text-phosphor-red py-2 mt-2"
               >
-                Disable Shared Housing
+                Disable shared household
               </button>
             </div>
           )}
         </section>
-
-        {/* Projection Chart (simplified) */}
-        {investments.length > 0 && (
-          <section>
-            <h2 className="text-lg font-semibold text-white mb-4">Cumulative Savings</h2>
-            <GlassCard>
-              <div className="space-y-2">
-                {[1, 5, 10, 20, yearsToRetirement].filter((y, i, arr) => y <= yearsToRetirement && arr.indexOf(y) === i).map((year) => {
-                  const projection = cumulativeSavings(totalWeeklyContributions, avgReturn, year);
-                  const lastYear = projection[projection.length - 1];
-
-                  return (
-                    <div key={year} className="flex justify-between items-center">
-                      <span className="text-sm text-gray-600 dark:text-gray-300">{year} year{year > 1 ? 's' : ''}</span>
-                      <div className="text-right">
-                        <span className="font-semibold money-display">{formatCurrency(lastYear.nominal, false)}</span>
-                        <span className="text-xs text-gray-500 ml-2">
-                          ({formatCurrency(lastYear.contributed, false)} contributed)
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </GlassCard>
-          </section>
-        )}
       </div>
 
       <TabBar />
 
-      {/* Investment Sheet */}
       <InvestmentSheet
         isOpen={showAddInvestment || !!editingInvestment}
-        onClose={() => {
-          setShowAddInvestment(false);
-          setEditingInvestment(null);
-        }}
+        onClose={() => { setShowAddInvestment(false); setEditingInvestment(null); }}
         investment={editingInvestment}
         onSave={(data) => {
           if (editingInvestment) {
-            dispatch({
-              type: 'UPDATE_INVESTMENT',
-              payload: { id: editingInvestment.id, updates: data },
-            });
+            dispatch({ type: 'UPDATE_INVESTMENT', payload: { id: editingInvestment.id, updates: data } });
           } else {
             dispatch({ type: 'ADD_INVESTMENT', payload: data });
           }
-          setShowAddInvestment(false);
-          setEditingInvestment(null);
+          setShowAddInvestment(false); setEditingInvestment(null);
         }}
         onDelete={editingInvestment ? () => {
           dispatch({ type: 'DELETE_INVESTMENT', payload: editingInvestment.id });
@@ -543,25 +422,17 @@ export default function WealthPage() {
         } : undefined}
       />
 
-      {/* Mortgage Sheet */}
       <MortgageSheet
         isOpen={showAddMortgage || !!editingMortgage}
-        onClose={() => {
-          setShowAddMortgage(false);
-          setEditingMortgage(null);
-        }}
+        onClose={() => { setShowAddMortgage(false); setEditingMortgage(null); }}
         mortgage={editingMortgage}
         onSave={(data) => {
           if (editingMortgage) {
-            dispatch({
-              type: 'UPDATE_MORTGAGE',
-              payload: { id: editingMortgage.id, updates: data },
-            });
+            dispatch({ type: 'UPDATE_MORTGAGE', payload: { id: editingMortgage.id, updates: data } });
           } else {
             dispatch({ type: 'ADD_MORTGAGE', payload: data });
           }
-          setShowAddMortgage(false);
-          setEditingMortgage(null);
+          setShowAddMortgage(false); setEditingMortgage(null);
         }}
         onDelete={editingMortgage ? () => {
           dispatch({ type: 'DELETE_MORTGAGE', payload: editingMortgage.id });
@@ -569,25 +440,17 @@ export default function WealthPage() {
         } : undefined}
       />
 
-      {/* House Expense Sheet */}
       <HouseExpenseSheet
         isOpen={showAddHouseExpense || !!editingHouseExpense}
-        onClose={() => {
-          setShowAddHouseExpense(false);
-          setEditingHouseExpense(null);
-        }}
+        onClose={() => { setShowAddHouseExpense(false); setEditingHouseExpense(null); }}
         expense={editingHouseExpense}
         onSave={(data) => {
           if (editingHouseExpense) {
-            dispatch({
-              type: 'UPDATE_HOUSE_EXPENSE',
-              payload: { id: editingHouseExpense.id, updates: data },
-            });
+            dispatch({ type: 'UPDATE_HOUSE_EXPENSE', payload: { id: editingHouseExpense.id, updates: data } });
           } else {
             dispatch({ type: 'ADD_HOUSE_EXPENSE', payload: data });
           }
-          setShowAddHouseExpense(false);
-          setEditingHouseExpense(null);
+          setShowAddHouseExpense(false); setEditingHouseExpense(null);
         }}
         onDelete={editingHouseExpense ? () => {
           dispatch({ type: 'DELETE_HOUSE_EXPENSE', payload: editingHouseExpense.id });
@@ -598,13 +461,55 @@ export default function WealthPage() {
   );
 }
 
-// Investment Form Sheet
+// ----- UI helpers -----------------------------------------------------------
+
+function Stat({ label, value, accent, size = 28 }: { label: string; value: string; accent: 'amber' | 'cyan' | 'mint' | 'violet' | 'red'; size?: number }) {
+  const cls = {
+    amber: 'text-phosphor-amber',
+    cyan: 'text-phosphor-cyan',
+    mint: 'text-phosphor-mint',
+    violet: 'text-phosphor-violet',
+    red: 'text-phosphor-red',
+  }[accent];
+  return (
+    <div>
+      <div className="term-label-plain mb-1">▸ {label}</div>
+      <FitNumber value={value} baseSize={size} minSize={14} className={`${cls} font-medium`} />
+    </div>
+  );
+}
+
+function MiniStat({ label, value, accent }: { label: string; value: string; accent?: 'amber' | 'cyan' | 'mint' | 'violet' | 'red' }) {
+  const cls = accent === 'amber' ? 'text-phosphor-amber'
+    : accent === 'cyan' ? 'text-phosphor-cyan'
+    : accent === 'mint' ? 'text-phosphor-mint'
+    : accent === 'violet' ? 'text-phosphor-violet'
+    : accent === 'red' ? 'text-phosphor-red'
+    : 'text-ink-100';
+  return (
+    <div>
+      <div className="term-label-plain mb-0.5">▸ {label}</div>
+      <FitNumber value={value} baseSize={16} minSize={11} className={`${cls} font-medium`} />
+    </div>
+  );
+}
+
+function SectionHeader({ code, title, onAdd }: { code: string; title: string; onAdd: () => void }) {
+  return (
+    <div className="flex justify-between items-center mb-3">
+      <div className="font-mono text-[11px] tracking-[0.22em] uppercase text-ink-100 flex items-center gap-2">
+        <span className="font-mono text-[9px] tracking-[0.2em] uppercase text-phosphor-amber px-1.5 py-0.5 border border-phosphor-amber/40 rounded-sm">{code}</span>
+        {title}
+      </div>
+      <button onClick={onAdd} className="term-btn-ghost text-[10px]">▸ Add</button>
+    </div>
+  );
+}
+
+// ----- Investment sheet -----------------------------------------------------
+
 function InvestmentSheet({
-  isOpen,
-  onClose,
-  investment,
-  onSave,
-  onDelete,
+  isOpen, onClose, investment, onSave, onDelete,
 }: {
   isOpen: boolean;
   onClose: () => void;
@@ -633,7 +538,6 @@ function InvestmentSheet({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name) return;
-
     onSave({
       name,
       type,
@@ -646,129 +550,35 @@ function InvestmentSheet({
   };
 
   return (
-    <BottomSheet isOpen={isOpen} onClose={onClose} title={investment ? 'Edit Investment' : 'Add Investment'}>
+    <BottomSheet isOpen={isOpen} onClose={onClose} code="INV" title={investment ? 'Edit Investment' : 'Add Investment'}>
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Name</label>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="e.g., S&amp;P 500 ETF, KiwiSaver"
-            className="ios-input"
-            required
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Type</label>
+        <Field label="Name"><input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g., S&P 500 ETF" className="term-input" required /></Field>
+        <Field label="Type">
           <div className="grid grid-cols-3 gap-2">
             {(['etf', 'kiwisaver', 'other'] as const).map((t) => (
-              <button
-                key={t}
-                type="button"
-                onClick={() => setType(t)}
-                className={`py-2 px-3 rounded-ios text-sm font-medium transition-all ${
-                  type === t
-                    ? 'bg-ios-blue text-white'
-                    : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'
-                }`}
-              >
-                {t === 'kiwisaver' ? 'KiwiSaver' : t === 'etf' ? 'ETF' : 'Other'}
-              </button>
+              <PillToggle key={t} active={type === t} onClick={() => setType(t)} label={t === 'kiwisaver' ? 'KiwiSaver' : t.toUpperCase()} />
             ))}
           </div>
-        </div>
-
+        </Field>
         <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Current Value</label>
-            <input
-              type="number"
-              value={currentValue}
-              onChange={(e) => setCurrentValue(e.target.value)}
-              placeholder="0.00"
-              step="0.01"
-              min="0"
-              className="ios-input"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Weekly Contribution</label>
-            <input
-              type="number"
-              value={weeklyContribution}
-              onChange={(e) => setWeeklyContribution(e.target.value)}
-              placeholder="0.00"
-              step="0.01"
-              min="0"
-              className="ios-input"
-            />
-          </div>
+          <Field label="Current value"><input type="number" value={currentValue} onChange={(e) => setCurrentValue(e.target.value)} placeholder="0" step="0.01" min="0" className="term-input" /></Field>
+          <Field label="Weekly contribution"><input type="number" value={weeklyContribution} onChange={(e) => setWeeklyContribution(e.target.value)} placeholder="0" step="0.01" min="0" className="term-input" /></Field>
         </div>
-
         <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Expected Return %</label>
-            <input
-              type="number"
-              value={expectedReturnRate}
-              onChange={(e) => setExpectedReturnRate(e.target.value)}
-              placeholder="7"
-              step="0.1"
-              className="ios-input"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Fee Rate % (optional)</label>
-            <input
-              type="number"
-              value={feeRate}
-              onChange={(e) => setFeeRate(e.target.value)}
-              placeholder="0.5"
-              step="0.01"
-              min="0"
-              className="ios-input"
-            />
-          </div>
+          <Field label="Expected return %"><input type="number" value={expectedReturnRate} onChange={(e) => setExpectedReturnRate(e.target.value)} placeholder="7" step="0.1" className="term-input" /></Field>
+          <Field label="Fee % (optional)"><input type="number" value={feeRate} onChange={(e) => setFeeRate(e.target.value)} placeholder="0.5" step="0.01" min="0" className="term-input" /></Field>
         </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Notes (optional)</label>
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="e.g., platform, account number..."
-            className="ios-input min-h-[60px] resize-none"
-          />
-        </div>
-
-        <div className="flex gap-3 pt-4">
-          {onDelete && (
-            <button
-              type="button"
-              onClick={onDelete}
-              className="px-6 py-3 rounded-ios font-semibold text-ios-red bg-ios-red/10"
-            >
-              Delete
-            </button>
-          )}
-          <button type="submit" className="ios-button flex-1">
-            {investment ? 'Save Changes' : 'Add Investment'}
-          </button>
-        </div>
+        <Field label="Notes (optional)"><textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="term-input min-h-[60px] resize-none" /></Field>
+        <SheetActions onDelete={onDelete} submitLabel={investment ? 'Save' : 'Add'} />
       </form>
     </BottomSheet>
   );
 }
 
-// Mortgage Form Sheet
+// ----- Mortgage sheet -------------------------------------------------------
+
 function MortgageSheet({
-  isOpen,
-  onClose,
-  mortgage,
-  onSave,
-  onDelete,
+  isOpen, onClose, mortgage, onSave, onDelete,
 }: {
   isOpen: boolean;
   onClose: () => void;
@@ -784,6 +594,9 @@ function MortgageSheet({
   const [weeklyPayment, setWeeklyPayment] = useState(mortgage?.weeklyPayment?.toString() || '');
   const [extraWeeklyPayment, setExtraWeeklyPayment] = useState(mortgage?.extraWeeklyPayment?.toString() || '0');
   const [termYears, setTermYears] = useState(mortgage?.termYears?.toString() || '30');
+  const [startDate, setStartDate] = useState(
+    mortgage?.startDate ? new Date(mortgage.startDate).toISOString().split('T')[0] : ''
+  );
   const [notes, setNotes] = useState(mortgage?.notes || '');
 
   React.useEffect(() => {
@@ -795,13 +608,13 @@ function MortgageSheet({
     setWeeklyPayment(mortgage?.weeklyPayment?.toString() || '');
     setExtraWeeklyPayment(mortgage?.extraWeeklyPayment?.toString() || '0');
     setTermYears(mortgage?.termYears?.toString() || '30');
+    setStartDate(mortgage?.startDate ? new Date(mortgage.startDate).toISOString().split('T')[0] : '');
     setNotes(mortgage?.notes || '');
   }, [mortgage]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!principal || !interestRate || !weeklyPayment) return;
-
     onSave({
       name,
       principal: parseFloat(principal),
@@ -810,160 +623,51 @@ function MortgageSheet({
       interestRate: parseFloat(interestRate),
       weeklyPayment: parseFloat(weeklyPayment),
       extraWeeklyPayment: parseFloat(extraWeeklyPayment) || 0,
-      startDate: mortgage?.startDate || Date.now(),
+      startDate: startDate ? new Date(startDate).getTime() : (mortgage?.startDate || Date.now()),
       termYears: parseInt(termYears) || 30,
       notes: notes || undefined,
     });
   };
 
   return (
-    <BottomSheet isOpen={isOpen} onClose={onClose} title={mortgage ? 'Edit Mortgage' : 'Add Mortgage'}>
+    <BottomSheet isOpen={isOpen} onClose={onClose} code="MTG" title={mortgage ? 'Edit Mortgage' : 'Add Mortgage'}>
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Name</label>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Home Mortgage"
-            className="ios-input"
-          />
-        </div>
+        <Field label="Name"><input type="text" value={name} onChange={(e) => setName(e.target.value)} className="term-input" /></Field>
 
         <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Current Balance</label>
-            <input
-              type="number"
-              value={principal}
-              onChange={(e) => setPrincipal(e.target.value)}
-              placeholder="500000"
-              step="1"
-              min="0"
-              className="ios-input"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Original Amount</label>
-            <input
-              type="number"
-              value={originalPrincipal}
-              onChange={(e) => setOriginalPrincipal(e.target.value)}
-              placeholder="600000"
-              step="1"
-              min="0"
-              className="ios-input"
-            />
-          </div>
+          <Field label="Current balance"><input type="number" value={principal} onChange={(e) => setPrincipal(e.target.value)} placeholder="500000" step="1" min="0" className="term-input" required /></Field>
+          <Field label="Original amount"><input type="number" value={originalPrincipal} onChange={(e) => setOriginalPrincipal(e.target.value)} placeholder="600000" step="1" min="0" className="term-input" /></Field>
         </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Property Value (CV)</label>
-          <input
-            type="number"
-            value={propertyValue}
-            onChange={(e) => setPropertyValue(e.target.value)}
-            placeholder="750000"
-            step="1"
-            min="0"
-            className="ios-input"
-          />
-          <p className="text-xs text-gray-500 mt-1">Used to calculate equity</p>
-        </div>
+        <Field label="Property value (CV)" hint="Used to calculate equity">
+          <input type="number" value={propertyValue} onChange={(e) => setPropertyValue(e.target.value)} placeholder="750000" step="1" min="0" className="term-input" />
+        </Field>
 
         <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Interest Rate %</label>
-            <input
-              type="number"
-              value={interestRate}
-              onChange={(e) => setInterestRate(e.target.value)}
-              placeholder="6.5"
-              step="0.01"
-              min="0"
-              className="ios-input"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Term (years)</label>
-            <input
-              type="number"
-              value={termYears}
-              onChange={(e) => setTermYears(e.target.value)}
-              placeholder="30"
-              min="1"
-              max="50"
-              className="ios-input"
-            />
-          </div>
+          <Field label="Interest rate %"><input type="number" value={interestRate} onChange={(e) => setInterestRate(e.target.value)} placeholder="6.5" step="0.01" min="0" className="term-input" required /></Field>
+          <Field label="Term (years)"><input type="number" value={termYears} onChange={(e) => setTermYears(e.target.value)} placeholder="30" min="1" max="50" className="term-input" /></Field>
         </div>
+
+        <Field label="Draw-down date" hint="When the mortgage was first drawn down — used to track years elapsed">
+          <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="term-input" />
+        </Field>
 
         <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Weekly Payment</label>
-            <input
-              type="number"
-              value={weeklyPayment}
-              onChange={(e) => setWeeklyPayment(e.target.value)}
-              placeholder="800"
-              step="0.01"
-              min="0"
-              className="ios-input"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Extra Weekly</label>
-            <input
-              type="number"
-              value={extraWeeklyPayment}
-              onChange={(e) => setExtraWeeklyPayment(e.target.value)}
-              placeholder="0"
-              step="0.01"
-              min="0"
-              className="ios-input"
-            />
-          </div>
+          <Field label="Weekly payment"><input type="number" value={weeklyPayment} onChange={(e) => setWeeklyPayment(e.target.value)} placeholder="800" step="0.01" min="0" className="term-input" required /></Field>
+          <Field label="Extra weekly"><input type="number" value={extraWeeklyPayment} onChange={(e) => setExtraWeeklyPayment(e.target.value)} placeholder="0" step="0.01" min="0" className="term-input" /></Field>
         </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Notes (optional)</label>
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="Bank, account details..."
-            className="ios-input min-h-[60px] resize-none"
-          />
-        </div>
-
-        <div className="flex gap-3 pt-4">
-          {onDelete && (
-            <button
-              type="button"
-              onClick={onDelete}
-              className="px-6 py-3 rounded-ios font-semibold text-ios-red bg-ios-red/10"
-            >
-              Delete
-            </button>
-          )}
-          <button type="submit" className="ios-button flex-1">
-            {mortgage ? 'Save Changes' : 'Add Mortgage'}
-          </button>
-        </div>
+        <Field label="Notes (optional)"><textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="term-input min-h-[60px] resize-none" /></Field>
+        <SheetActions onDelete={onDelete} submitLabel={mortgage ? 'Save' : 'Add'} />
       </form>
     </BottomSheet>
   );
 }
 
-// House Expense Form Sheet
+// ----- House expense sheet --------------------------------------------------
+
 function HouseExpenseSheet({
-  isOpen,
-  onClose,
-  expense,
-  onSave,
-  onDelete,
+  isOpen, onClose, expense, onSave, onDelete,
 }: {
   isOpen: boolean;
   onClose: () => void;
@@ -986,96 +690,73 @@ function HouseExpenseSheet({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !amount) return;
-
-    onSave({
-      name,
-      amount: parseFloat(amount),
-      frequency,
-      category,
-    });
+    onSave({ name, amount: parseFloat(amount), frequency, category });
   };
 
   return (
-    <BottomSheet isOpen={isOpen} onClose={onClose} title={expense ? 'Edit Expense' : 'Add Shared Expense'}>
+    <BottomSheet isOpen={isOpen} onClose={onClose} code="SHR" title={expense ? 'Edit Expense' : 'Add Shared Expense'}>
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Name</label>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="e.g., Rent, Power, Internet"
-            className="ios-input"
-            required
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Amount</label>
-          <input
-            type="number"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            placeholder="0.00"
-            step="0.01"
-            min="0"
-            className="ios-input"
-            required
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Frequency</label>
-          <div className="grid grid-cols-3 gap-2">
-            {(['weekly', 'monthly', 'yearly'] as const).map((f) => (
-              <button
-                key={f}
-                type="button"
-                onClick={() => setFrequency(f)}
-                className={`py-2 px-3 rounded-ios text-sm font-medium transition-all ${
-                  frequency === f
-                    ? 'bg-ios-blue text-white'
-                    : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'
-                }`}
-              >
-                {f.charAt(0).toUpperCase() + f.slice(1)}
-              </button>
+        <Field label="Name"><input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g., Rent, Power" className="term-input" required /></Field>
+        <Field label="Amount"><input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" step="0.01" min="0" className="term-input" required /></Field>
+        <Field label="Frequency">
+          <div className="grid grid-cols-4 gap-2">
+            {(['weekly', 'fortnightly', 'monthly', 'yearly'] as const).map((f) => (
+              <PillToggle key={f} active={frequency === f} onClick={() => setFrequency(f)} label={f.slice(0, 4).toUpperCase()} />
             ))}
           </div>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Category</label>
-          <select
-            value={category}
-            onChange={(e) => setCategory(e.target.value as HouseExpense['category'])}
-            className="ios-input"
-          >
-            <option value="mortgage">Mortgage/Rent</option>
+        </Field>
+        <Field label="Category">
+          <select value={category} onChange={(e) => setCategory(e.target.value as HouseExpense['category'])} className="term-input">
+            <option value="mortgage">Mortgage / Rent</option>
             <option value="rates">Rates</option>
             <option value="body_corporate">Body Corporate</option>
             <option value="utilities">Utilities</option>
             <option value="insurance">Insurance</option>
-            <option value="food">Food/Groceries</option>
+            <option value="food">Food / Groceries</option>
             <option value="other">Other</option>
           </select>
-        </div>
-
-        <div className="flex gap-3 pt-4">
-          {onDelete && (
-            <button
-              type="button"
-              onClick={onDelete}
-              className="px-6 py-3 rounded-ios font-semibold text-ios-red bg-ios-red/10"
-            >
-              Delete
-            </button>
-          )}
-          <button type="submit" className="ios-button flex-1">
-            {expense ? 'Save Changes' : 'Add Expense'}
-          </button>
-        </div>
+        </Field>
+        <SheetActions onDelete={onDelete} submitLabel={expense ? 'Save' : 'Add'} />
       </form>
     </BottomSheet>
+  );
+}
+
+// ----- Form primitives ------------------------------------------------------
+
+function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label className="term-label-plain block mb-1.5">▸ {label}</label>
+      {children}
+      {hint && <p className="text-[11px] text-ink-500 mt-1">{hint}</p>}
+    </div>
+  );
+}
+
+function PillToggle({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`py-2 px-2 font-mono text-[10px] tracking-[0.14em] uppercase border rounded-sm transition-all ${
+        active
+          ? 'border-phosphor-amber text-phosphor-amber bg-phosphor-amber/8'
+          : 'border-graphite-600 text-ink-500 hover:text-ink-300 hover:border-graphite-500'
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
+function SheetActions({ onDelete, submitLabel }: { onDelete?: () => void; submitLabel: string }) {
+  return (
+    <div className="flex gap-3 pt-4">
+      {onDelete && (
+        <button type="button" onClick={onDelete} className="term-btn-danger">Delete</button>
+      )}
+      <button type="submit" className="term-btn flex-1">▸ {submitLabel}</button>
+    </div>
   );
 }

@@ -75,7 +75,7 @@ export interface Mortgage {
   interestRate: number; // Annual %
   weeklyPayment: number;
   extraWeeklyPayment: number; // Additional payments
-  startDate: number;
+  startDate: number; // When mortgage was first drawn down (timestamp)
   termYears: number;
   notes?: string;
   createdAt: number;
@@ -128,12 +128,15 @@ export type PayFrequency = 'weekly' | 'fortnightly' | 'monthly';
 
 // User settings
 export interface UserSettings {
-  age: number;
+  age?: number;              // Deprecated. Use dateOfBirth. Kept for migration only.
+  dateOfBirth?: string;      // ISO date string YYYY-MM-DD. Primary source for current age.
   retirementAge: number;
+  lifeExpectancy: number;    // Used for retirement drawdown projection. Default 90.
   afterTaxWeeklyIncome: number;
   currency: string;
-  inflationRate: number; // Annual % assumption (e.g., 2.5)
-  payFrequency?: PayFrequency; // How often user gets paid (default: fortnightly)
+  inflationRate: number;     // Annual % assumption (e.g., 2.5)
+  safeWithdrawalRate: number; // Annual % real, used for drawdown calc. Default 4.0.
+  payFrequency?: PayFrequency;
   createdAt: number;
   updatedAt: number;
 }
@@ -152,11 +155,13 @@ export interface BudgetStore {
 
 // Default settings for new users
 export const DEFAULT_SETTINGS: UserSettings = {
-  age: 28,
-  retirementAge: 70,
+  dateOfBirth: undefined,
+  retirementAge: 67,
+  lifeExpectancy: 90,
   afterTaxWeeklyIncome: 0,
   currency: 'NZD',
   inflationRate: 2.5,
+  safeWithdrawalRate: 4.0,
   createdAt: Date.now(),
   updatedAt: Date.now(),
 };
