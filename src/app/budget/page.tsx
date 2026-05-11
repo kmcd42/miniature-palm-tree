@@ -64,7 +64,7 @@ export default function BudgetPage() {
   };
 
   const housingCalc = sharedHousing?.enabled
-    ? calculateSharedHousing(sharedHousing, settings.afterTaxWeeklyIncome)
+    ? calculateSharedHousing(sharedHousing, settings.afterTaxWeeklyIncome, mortgages)
     : null;
 
   // Build effective budget items list including linked investments/savings

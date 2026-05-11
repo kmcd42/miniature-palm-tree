@@ -599,9 +599,15 @@ export function projectCurrentMortgageBalance(mortgage: Mortgage): {
 }
 
 // Calculate shared housing expenses
+//
+// Mortgage payments are part of the household cost surface: a household where
+// one partner owns the mortgage but both live there still has a real weekly
+// outflow that should be split by the income ratio. Pass the mortgages array
+// to include their weekly payments (regular + extra) in the household total.
 export function calculateSharedHousing(
   housing: SharedHousing,
-  yourWeeklyIncome: number
+  yourWeeklyIncome: number,
+  mortgages: Mortgage[] = [],
 ): {
   totalWeeklyExpenses: number;
   combinedWeeklyIncome: number;
@@ -610,19 +616,22 @@ export function calculateSharedHousing(
   partnerShare: number;
   yourExpenses: { name: string; amount: number; category: string }[];
 } {
-  // Calculate total weekly expenses
-  const totalWeeklyExpenses = housing.expenses.reduce((sum, exp) => {
+  // Total weekly housing surface = listed shared expenses + mortgage payments
+  const expensesWeekly = housing.expenses.reduce((sum, exp) => {
     return sum + toWeekly(exp.amount, exp.frequency);
   }, 0);
+  const mortgagesWeekly = mortgages.reduce(
+    (sum, m) => sum + m.weeklyPayment + m.extraWeeklyPayment,
+    0,
+  );
+  const totalWeeklyExpenses = expensesWeekly + mortgagesWeekly;
 
   const combinedWeeklyIncome = yourWeeklyIncome + housing.partnerWeeklyIncome;
 
-  // Percentage of combined income needed for housing
   const percentageOfIncome = combinedWeeklyIncome > 0
     ? (totalWeeklyExpenses / combinedWeeklyIncome) * 100
     : 0;
 
-  // Your share based on income proportion
   const yourIncomeRatio = combinedWeeklyIncome > 0
     ? yourWeeklyIncome / combinedWeeklyIncome
     : 0.5;
@@ -630,15 +639,22 @@ export function calculateSharedHousing(
   const yourShare = totalWeeklyExpenses * yourIncomeRatio;
   const partnerShare = totalWeeklyExpenses * (1 - yourIncomeRatio);
 
-  // Break down your share by expense
-  const yourExpenses = housing.expenses.map((exp) => {
-    const weeklyAmount = toWeekly(exp.amount, exp.frequency);
-    return {
+  // Break down your share by item (expenses + each mortgage)
+  const yourExpenses: { name: string; amount: number; category: string }[] = [];
+  for (const exp of housing.expenses) {
+    yourExpenses.push({
       name: exp.name,
-      amount: weeklyAmount * yourIncomeRatio,
+      amount: toWeekly(exp.amount, exp.frequency) * yourIncomeRatio,
       category: exp.category,
-    };
-  });
+    });
+  }
+  for (const m of mortgages) {
+    yourExpenses.push({
+      name: m.name,
+      amount: (m.weeklyPayment + m.extraWeeklyPayment) * yourIncomeRatio,
+      category: 'mortgage',
+    });
+  }
 
   return {
     totalWeeklyExpenses,
@@ -738,7 +754,7 @@ export function buildCompleteBudgetItems(
 
   // Calculate housing share if enabled
   const housingCalc = sharedHousing?.enabled
-    ? calculateSharedHousing(sharedHousing, yourWeeklyIncome)
+    ? calculateSharedHousing(sharedHousing, yourWeeklyIncome, mortgages)
     : null;
 
   // Track which items are already linked manually
@@ -1188,9 +1204,13 @@ export function generateInsights(store: BudgetStore): Insight[] {
   }
 
   // 4) Household contribution summary — focus on % of combined income going
-  //    to shared expenses, which is the actually-useful number.
-  if (sharedHousing?.enabled && sharedHousing.partnerWeeklyIncome > 0 && sharedHousing.expenses.length > 0) {
-    const calc = calculateSharedHousing(sharedHousing, settings.afterTaxWeeklyIncome);
+  //    to shared expenses (incl. mortgages), which is the actually-useful number.
+  if (
+    sharedHousing?.enabled &&
+    sharedHousing.partnerWeeklyIncome > 0 &&
+    (sharedHousing.expenses.length > 0 || mortgages.length > 0)
+  ) {
+    const calc = calculateSharedHousing(sharedHousing, settings.afterTaxWeeklyIncome, mortgages);
     if (calc.combinedWeeklyIncome > 0) {
       const householdPct = (calc.totalWeeklyExpenses / calc.combinedWeeklyIncome) * 100;
       insights.push({

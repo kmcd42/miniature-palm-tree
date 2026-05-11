@@ -75,7 +75,7 @@ export default function WealthPage() {
     : [];
 
   const housingCalc = sharedHousing?.enabled
-    ? calculateSharedHousing(sharedHousing, settings.afterTaxWeeklyIncome)
+    ? calculateSharedHousing(sharedHousing, settings.afterTaxWeeklyIncome, mortgages)
     : null;
 
   return (

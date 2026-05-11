@@ -280,6 +280,31 @@ body::after {
   }
   .term-input::placeholder { color: var(--ink-faint); }
 
+  /* Native date/time inputs render with platform chrome (calendar icon, date
+     placeholder). On iOS especially, that chrome overflows our 10/12 padding
+     and visually overlaps the box. Bump min-height, force the dark color
+     scheme so the picker icon inverts correctly, and use 16px to suppress
+     the iOS "tap to zoom" bump. */
+  .term-input[type='date'],
+  .term-input[type='time'],
+  .term-input[type='datetime-local'],
+  .term-input[type='month'] {
+    color-scheme: dark;
+    min-height: 44px;
+    font-size: 16px;
+    line-height: 1.2;
+    padding-right: 12px;
+  }
+  .term-input[type='date']::-webkit-calendar-picker-indicator,
+  .term-input[type='time']::-webkit-calendar-picker-indicator {
+    filter: invert(0.7) sepia(0.6) saturate(3) hue-rotate(10deg);
+    opacity: 0.7;
+    cursor: pointer;
+  }
+  .term-input[type='date']::-webkit-date-and-time-value {
+    text-align: left;
+  }
+
   .ios-input { @apply term-input; }
   .ios-input:focus { color: var(--ink-bright); }
 

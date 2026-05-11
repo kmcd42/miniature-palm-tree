@@ -234,13 +234,15 @@ export function FitNumber({
   }, [baseSize, minSize]);
 
   return (
-    // Outer div is the measurement frame; the span carries the text styling
-    // (including color and any text-shadow glow), so the shadow halo isn't
-    // clipped by an overflow boundary.
-    <div ref={containerRef} className="w-full">
+    // className goes on the outer block so layout utilities (mt-1.5, text
+    // color, font weight) behave as callers expect. We deliberately avoid
+    // overflow-hidden here so the text-shadow halo on glowing numbers can
+    // extend past the layout box. The span renders the actual text and
+    // inherits text-shadow / color from the wrapper.
+    <div ref={containerRef} className={`w-full ${className}`}>
       <span
         ref={innerRef}
-        className={`inline-block whitespace-nowrap mono-num ${className}`}
+        className="inline-block whitespace-nowrap mono-num"
         style={{ fontSize: size, lineHeight: 1.05 }}
       >
         {value}

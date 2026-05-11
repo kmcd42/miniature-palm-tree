@@ -92,7 +92,7 @@ export default function Dashboard() {
 
   // Partner share summary if shared housing on
   const housingCalc = sharedHousing?.enabled && sharedHousing.partnerWeeklyIncome > 0
-    ? calculateSharedHousing(sharedHousing, settings.afterTaxWeeklyIncome)
+    ? calculateSharedHousing(sharedHousing, settings.afterTaxWeeklyIncome, mortgages)
     : null;
 
   const now = new Date();
@@ -150,18 +150,10 @@ export default function Dashboard() {
                   <CategoryStat label="Cost" value={weeklyByCategory.cost} color="amber" />
                   <CategoryStat label="Savings" value={weeklyByCategory.savings} color="mint" />
                 </div>
-                <div className="border-t border-graphite-600 pt-3 flex justify-between items-end gap-4">
-                  <div>
-                    <div className="font-mono text-[10px] tracking-[0.18em] uppercase text-ink-500">▸ Uncommitted</div>
-                    <div className={`mono-num text-2xl font-medium ${uncommittedWeekly >= 0 ? 'text-phosphor-mint mono-num-glow-mint' : 'text-phosphor-red mono-num-glow-red'}`}>
-                      {formatCurrency(uncommittedWeekly)}
-                    </div>
-                  </div>
-                  <div className="flex-1 max-w-xs">
-                    <ProgressBar
-                      progress={(totalWeeklyCommitted / settings.afterTaxWeeklyIncome) * 100}
-                      color={uncommittedWeekly >= 0 ? 'amber' : 'danger'}
-                    />
+                <div className="border-t border-graphite-600 pt-3">
+                  <div className="term-label-plain mb-0.5">Uncommitted</div>
+                  <div className={`mono-num text-2xl font-medium ${uncommittedWeekly >= 0 ? 'text-phosphor-mint mono-num-glow-mint' : 'text-phosphor-red mono-num-glow-red'}`}>
+                    {formatCurrency(uncommittedWeekly)}
                   </div>
                 </div>
               </Panel>
@@ -245,20 +237,46 @@ export default function Dashboard() {
 
               <Panel>
                 <div className="term-label-plain">▸ Emergency</div>
-                <FitNumber
-                  value={emergencyGoal ? `${monthsCovered.toFixed(1)}mo` : '—'}
-                  baseSize={28}
-                  minSize={16}
-                  className={`font-medium mt-1.5 ${monthsCovered >= (emergencyGoal?.monthsOfExpenses ?? 6) ? 'text-phosphor-mint' : 'text-phosphor-amber'}`}
-                />
-                {emergencyGoal && (
+                {emergencyGoal ? (
                   <>
+                    <div className="mt-1.5">
+                      <FitNumber
+                        value={`${monthsCovered.toFixed(1)}mo`}
+                        baseSize={28}
+                        minSize={16}
+                        className={`font-medium ${
+                          monthsCovered >= (emergencyGoal.monthsOfExpenses ?? 6)
+                            ? 'text-phosphor-mint'
+                            : 'text-phosphor-amber'
+                        }`}
+                      />
+                    </div>
                     <div className="font-mono text-[10px] text-ink-500 tracking-[0.14em] mt-1.5">
                       OF {emergencyGoal.monthsOfExpenses} TARGET · {emergencyFundProgress.toFixed(0)}%
                     </div>
                     <div className="mt-1.5">
-                      <ProgressBar progress={emergencyFundProgress} color={monthsCovered >= (emergencyGoal.monthsOfExpenses ?? 6) ? 'success' : 'amber'} />
+                      <ProgressBar
+                        progress={emergencyFundProgress}
+                        color={monthsCovered >= (emergencyGoal.monthsOfExpenses ?? 6) ? 'success' : 'amber'}
+                      />
                     </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="mt-1.5">
+                      <FitNumber
+                        value="—"
+                        baseSize={28}
+                        minSize={16}
+                        className="text-ink-500 font-medium"
+                      />
+                    </div>
+                    <a
+                      href="/goals"
+                      className="font-mono text-[10px] text-phosphor-amber hover:underline tracking-[0.14em] uppercase mt-1.5 inline-block"
+                    >
+                      Set goal ▸
+                    </a>
                   </>
                 )}
               </Panel>
@@ -428,128 +446,80 @@ function RealityCheck({
     ? masseyBracket(drawdownDeplete, masseyNoFrills, masseyChoices)
     : null;
 
+  const bracketAccent: 'mint' | 'amber' | 'red' =
+    !bracket
+      ? 'amber'
+      : bracket.bracket === 'above' || bracket.bracket === 'choices'
+      ? 'mint'
+      : bracket.bracket === 'between' || bracket.bracket === 'no_frills'
+      ? 'amber'
+      : 'red';
+
   return (
     <Panel brackets>
       <CardHeader title="Reality Check · NZ Benchmarks" subtitle="Approximate — verify in Config" />
 
-      <div className="space-y-4">
-        {/* Net wealth vs median */}
-        <div>
-          <div className="flex justify-between items-baseline gap-3 mb-1.5">
-            <span className="term-label-plain">Net wealth vs NZ median (age {age})</span>
-            <span className={`mono-num text-sm font-medium ${wealthAhead ? 'text-phosphor-mint' : 'text-phosphor-amber'}`}>
-              {wealthAhead ? '+' : ''}{wealthDelta.toFixed(0)}%
-            </span>
-          </div>
-          <div className="flex justify-between font-mono text-[10px] tracking-[0.14em] uppercase text-ink-500 mb-1.5">
-            <span>YOU {formatCurrencyCompact(netWealth)}</span>
-            <span>MEDIAN {formatCurrencyCompact(median)}</span>
-          </div>
-          <BenchmarkBar
-            value={netWealth}
-            reference={median}
-            valueColor={wealthAhead ? '#7FF0BD' : '#FFB453'}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <BenchmarkCard
+          label={`Net wealth · age ${age}`}
+          headline={`${wealthAhead ? '+' : ''}${wealthDelta.toFixed(0)}%`}
+          accent={wealthAhead ? 'mint' : 'amber'}
+          detail={`YOU ${formatCurrencyCompact(netWealth)} · NZ ${formatCurrencyCompact(median)}`}
+        />
+        <BenchmarkCard
+          label="Savings rate"
+          headline={`${(savingsRate * 100).toFixed(0)}%`}
+          accent={savingsAhead ? 'mint' : 'amber'}
+          detail={`NZ AVG ${(avgRate * 100).toFixed(0)}%`}
+        />
+        {bracket && drawdownDeplete > 0 ? (
+          <BenchmarkCard
+            label="Retirement draw · Massey"
+            headline={bracket.label}
+            accent={bracketAccent}
+            detail={`YOU ${formatCurrency(drawdownDeplete)}/WK · NF ${formatCurrency(masseyNoFrills)} · CH ${formatCurrency(masseyChoices)}`}
           />
-        </div>
-
-        {/* Savings rate vs NZ avg */}
-        <div>
-          <div className="flex justify-between items-baseline gap-3 mb-1.5">
-            <span className="term-label-plain">Savings rate vs NZ avg</span>
-            <span className={`mono-num text-sm font-medium ${savingsAhead ? 'text-phosphor-mint' : 'text-phosphor-amber'}`}>
-              {(savingsRate * 100).toFixed(0)}%
-            </span>
-          </div>
-          <div className="flex justify-between font-mono text-[10px] tracking-[0.14em] uppercase text-ink-500 mb-1.5">
-            <span>YOU {(savingsRate * 100).toFixed(0)}%</span>
-            <span>NZ AVG {(avgRate * 100).toFixed(0)}%</span>
-          </div>
-          <BenchmarkBar
-            value={savingsRate}
-            reference={Math.max(avgRate, savingsRate, 0.001)}
-            valueColor={savingsAhead ? '#7FF0BD' : '#FFB453'}
-            normaliseAgainst={Math.max(savingsRate, avgRate) * 1.4}
+        ) : (
+          <BenchmarkCard
+            label="Retirement draw · Massey"
+            headline="—"
+            accent="amber"
+            detail="Add investments to project"
           />
-        </div>
-
-        {/* Drawdown vs Massey */}
-        {bracket && drawdownDeplete > 0 && (
-          <div>
-            <div className="flex justify-between items-baseline gap-3 mb-1.5">
-              <span className="term-label-plain">Retirement draw vs Massey</span>
-              <span className={`mono-num text-sm font-medium ${
-                bracket.bracket === 'above' || bracket.bracket === 'choices'
-                  ? 'text-phosphor-mint'
-                  : bracket.bracket === 'between' || bracket.bracket === 'no_frills'
-                  ? 'text-phosphor-amber'
-                  : 'text-phosphor-red'
-              }`}>
-                {bracket.label}
-              </span>
-            </div>
-            <div className="flex justify-between font-mono text-[10px] tracking-[0.14em] uppercase text-ink-500 mb-1.5">
-              <span>YOU {formatCurrency(drawdownDeplete)}/WK</span>
-              <span>NF {formatCurrency(masseyNoFrills)} · CH {formatCurrency(masseyChoices)}</span>
-            </div>
-            <div className="relative h-2 bg-graphite-700 rounded-sm overflow-hidden">
-              {/* No-frills marker */}
-              <span className="absolute top-0 bottom-0 w-px bg-phosphor-amber/60" style={{ left: `${Math.min(100, (masseyNoFrills / masseyMax) * 100)}%` }} />
-              {/* Choices marker */}
-              <span className="absolute top-0 bottom-0 w-px bg-phosphor-mint/60" style={{ left: `${Math.min(100, (masseyChoices / masseyMax) * 100)}%` }} />
-              {/* Your position */}
-              <span
-                className="absolute top-0 bottom-0 w-1 rounded-sm"
-                style={{
-                  left: `${Math.min(100, (drawdownDeplete / masseyMax) * 100)}%`,
-                  background: '#FFB453',
-                  boxShadow: '0 0 6px #FFB453',
-                }}
-              />
-            </div>
-            <div className="font-mono text-[10px] tracking-[0.14em] uppercase text-ink-500 mt-2 leading-relaxed">
-              {drawdownPerpetual > 0 && drawdownPerpetual !== drawdownDeplete && (
-                <>▸ PERPETUAL MODE: {formatCurrency(drawdownPerpetual)}/WK</>
-              )}
-            </div>
-          </div>
         )}
+      </div>
 
-        <div className="font-mono text-[10px] tracking-[0.14em] uppercase text-ink-500 leading-relaxed pt-1 border-t border-graphite-600">
-          ▸ Source: Stats NZ Household Net Worth 2021 · Massey Retirement Expenditure Guidelines · update figures in Config.
-        </div>
+      <div className="font-mono text-[10px] tracking-[0.14em] uppercase text-ink-500 leading-relaxed pt-3 mt-3 border-t border-graphite-600">
+        ▸ Source: Stats NZ Household Net Worth 2021 · Massey Retirement Expenditure Guidelines · update figures in Config.
       </div>
     </Panel>
   );
 }
 
-function BenchmarkBar({
-  value,
-  reference,
-  valueColor,
-  normaliseAgainst,
+function BenchmarkCard({
+  label,
+  headline,
+  detail,
+  accent,
 }: {
-  value: number;
-  reference: number;
-  valueColor: string;
-  normaliseAgainst?: number;
+  label: string;
+  headline: string;
+  detail: string;
+  accent: 'mint' | 'amber' | 'red' | 'cyan';
 }) {
-  const max = normaliseAgainst ?? Math.max(value, reference) * 1.25;
-  const valPct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
-  const refPct = max > 0 ? Math.min(100, (reference / max) * 100) : 0;
+  const cls = {
+    mint: 'text-phosphor-mint',
+    amber: 'text-phosphor-amber',
+    red: 'text-phosphor-red',
+    cyan: 'text-phosphor-cyan',
+  }[accent];
   return (
-    <div className="relative h-2 bg-graphite-700 rounded-sm overflow-hidden">
-      <span
-        className="absolute top-0 bottom-0 w-px bg-ink-300"
-        style={{ left: `${refPct}%`, opacity: 0.7 }}
-      />
-      <span
-        className="absolute top-0 bottom-0 rounded-sm"
-        style={{
-          width: `${valPct}%`,
-          background: valueColor,
-          boxShadow: `0 0 6px ${valueColor}`,
-        }}
-      />
+    <div className="border border-graphite-600 rounded-sm bg-graphite-800/60 p-3">
+      <div className="term-label-plain mb-1.5">{label}</div>
+      <FitNumber value={headline} baseSize={26} minSize={14} className={`${cls} font-medium`} />
+      <div className="font-mono text-[10px] tracking-[0.14em] uppercase text-ink-500 mt-2 leading-relaxed">
+        {detail}
+      </div>
     </div>
   );
 }
@@ -572,12 +542,15 @@ function InsightRow({ insight }: { insight: ReturnType<typeof generateInsights>[
         {insight.detail && (
           <div className="text-xs text-ink-500 mt-0.5 leading-snug">{insight.detail}</div>
         )}
+        {insight.actionHref && (
+          <a
+            href={insight.actionHref}
+            className="inline-block font-mono text-[10px] tracking-[0.16em] uppercase text-phosphor-amber hover:underline mt-2"
+          >
+            {insight.actionLabel ?? 'OPEN'} ▸
+          </a>
+        )}
       </div>
-      {insight.actionHref && (
-        <a href={insight.actionHref} className="font-mono text-[10px] tracking-[0.16em] uppercase text-phosphor-amber hover:underline shrink-0 self-center">
-          {insight.actionLabel ?? 'OPEN'} ▸
-        </a>
-      )}
     </div>
   );
 }
