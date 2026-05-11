@@ -140,8 +140,9 @@ export default function WealthPage() {
                   format={(n) => formatCurrency(n)}
                 />
                 <div className="mt-3 text-[10px] font-mono tracking-[0.14em] uppercase text-ink-500 leading-relaxed">
-                  ▸ Portfolio (investments only): {formatCurrencyCompact(drawdown.portfolioAtRetirementReal)} real · real return {(drawdown.realReturnRate * 100).toFixed(1)}%/yr. Bands = SWR ±1.5% on deplete.
-                  {!drawdown.nzSuperEligible && settings.includeNzSuper && ` Super activates from age ${drawdown.nzSuperEligibilityAge}.`}
+                  ▸ Portfolio (investments only): {formatCurrencyCompact(drawdown.portfolioAtRetirementReal)} real · expected real return {(drawdown.realReturnRate * 100).toFixed(1)}%/yr.
+                  Deplete = SWR {settings.safeWithdrawalRate}% · perpetual = SWR − 1% (sequence-of-returns buffer). Bands = SWR ±1.5%.
+                  {!drawdown.nzSuperEligible && settings.includeNzSuper && ` Super activates at age ${drawdown.nzSuperEligibilityAge}.`}
                 </div>
               </>
             ) : (

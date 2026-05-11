@@ -950,8 +950,20 @@ export function generateDrawdownProjection(
   const expectedWeekly = swrWeekly(swr);
 
   // Perpetual mode: live off real returns. Principal preserved (in real terms).
+  //
+  // Naive perpetual = portfolio × expected_real_return, but that ignores
+  // sequence-of-returns risk: withdrawing the average return each year will
+  // deplete the portfolio during bad sequences (you sell depreciated assets
+  // in down years and never recover). Empirical work on indefinite-horizon
+  // safe withdrawal rates (Pfau, Bengen, et al.) puts the perpetual SWR
+  // about 1 percentage point below the 30-year SWR.
+  //
+  // We model perpetual = max(0, SWR − 1%). It's strictly below deplete, scales
+  // with the user's chosen SWR, and matches the literature. The realReturnRate
+  // field below is informational only.
   const realReturnRate = weightedAvgRealReturn(investments, settings.inflationRate, settings.safeWithdrawalRate);
-  const perpetualWeekly = (portfolioReal * realReturnRate) / 52;
+  const perpetualRate = Math.max(0, swr - 0.01);
+  const perpetualWeekly = (portfolioReal * perpetualRate) / 52;
 
   // NZ Super
   const nzEligAge = settings.nzSuperEligibilityAge ?? 65;

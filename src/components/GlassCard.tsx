@@ -234,10 +234,13 @@ export function FitNumber({
   }, [baseSize, minSize]);
 
   return (
-    <div ref={containerRef} className={`overflow-hidden w-full ${className}`}>
+    // Outer div is the measurement frame; the span carries the text styling
+    // (including color and any text-shadow glow), so the shadow halo isn't
+    // clipped by an overflow boundary.
+    <div ref={containerRef} className="w-full">
       <span
         ref={innerRef}
-        className="inline-block whitespace-nowrap mono-num"
+        className={`inline-block whitespace-nowrap mono-num ${className}`}
         style={{ fontSize: size, lineHeight: 1.05 }}
       >
         {value}
