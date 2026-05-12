@@ -108,7 +108,7 @@ export default function Dashboard() {
             <div className="font-mono text-[10px] tracking-[0.24em] text-phosphor-amber/80 uppercase flex items-center gap-2">
               <StatusDot color="amber" pulse /> AETHER-OS · OPERATIONS
             </div>
-            <h1 className="font-serif text-[44px] sm:text-[52px] leading-none text-ink-100 mt-1">
+            <h1 className="font-mono text-[36px] sm:text-[44px] font-semibold leading-none tracking-tight text-ink-100 mt-1">
               compound<span className="text-phosphor-amber">.</span>
             </h1>
             <div className="font-mono text-[10px] tracking-[0.2em] text-ink-500 uppercase mt-1.5">
