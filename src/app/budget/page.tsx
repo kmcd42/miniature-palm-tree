@@ -192,8 +192,8 @@ export default function BudgetPage() {
           <div className="font-mono text-[10px] tracking-[0.24em] text-phosphor-amber/80 uppercase flex items-center gap-2">
             <StatusDot color="amber" pulse /> BUDGET · WEEKLY ALLOCATION
           </div>
-          <h1 className="font-serif text-[36px] leading-none text-ink-100 mt-1">
-            Budget<span className="text-phosphor-amber">.</span>
+          <h1 className="font-mono text-[30px] sm:text-[34px] font-semibold leading-none tracking-tight text-ink-100 mt-1">
+            budget<span className="text-phosphor-amber">.</span>
           </h1>
         </header>
 

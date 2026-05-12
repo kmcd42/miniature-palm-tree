@@ -1,201 +1,83 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" shape-rendering="crispEdges">
   <defs>
-    <linearGradient id="bg" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#0E1418"/>
-      <stop offset="100%" stop-color="#04070A"/>
-    </linearGradient>
-    <linearGradient id="bar" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#FFB453"/>
-      <stop offset="100%" stop-color="#B07E3D"/>
-    </linearGradient>
-    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
-      <feGaussianBlur stdDeviation="6" result="blur"/>
+    <radialGradient id="bg" cx="50%" cy="42%" r="68%">
+      <stop offset="0%" stop-color="#0A0F0C"/>
+      <stop offset="100%" stop-color="#000000"/>
+    </radialGradient>
+    <pattern id="scan" width="4" height="4" patternUnits="userSpaceOnUse">
+      <rect width="4" height="4" fill="transparent"/>
+      <rect y="2" width="4" height="2" fill="#000000" fill-opacity="0.55"/>
+    </pattern>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="2.5" result="b"/>
       <feMerge>
-        <feMergeNode in="blur"/>
+        <feMergeNode in="b"/>
         <feMergeNode in="SourceGraphic"/>
       </feMerge>
     </filter>
   </defs>
 
   <!-- Background tile -->
-  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
 
-  <!-- Subtle grid -->
-  <g stroke="#5BC8FF" stroke-opacity="0.05" stroke-width="1">
-    <line x1="0" y1="128" x2="512" y2="128"/>
-    <line x1="0" y1="256" x2="512" y2="256"/>
-    <line x1="0" y1="384" x2="512" y2="384"/>
-    <line x1="128" y1="0" x2="128" y2="512"/>
-    <line x1="256" y1="0" x2="256" y2="512"/>
-    <line x1="384" y1="0" x2="384" y2="512"/>
+  <!-- Pixel-art dollar sign in phosphor green (14×20 grid, 24px cells) -->
+  <g fill="#5DE88E" filter="url(#glow)">
+    <!-- Row 0  (y=16):  cols 6-7 (top of vertical bar) -->
+    <rect x="232" y="16" width="48" height="24"/>
+    <!-- Row 1  (y=40):  cols 6-7 -->
+    <rect x="232" y="40" width="48" height="24"/>
+    <!-- Row 2  (y=64):  cols 2-11 (top of S) -->
+    <rect x="136" y="64" width="240" height="24"/>
+    <!-- Row 3  (y=88):  cols 1-4, 6-7, 9-12 -->
+    <rect x="112" y="88" width="96" height="24"/>
+    <rect x="232" y="88" width="48" height="24"/>
+    <rect x="304" y="88" width="96" height="24"/>
+    <!-- Row 4  (y=112): cols 1-2, 6-7, 11-12 -->
+    <rect x="112" y="112" width="48" height="24"/>
+    <rect x="232" y="112" width="48" height="24"/>
+    <rect x="352" y="112" width="48" height="24"/>
+    <!-- Row 5  (y=136): cols 1-2, 6-7 -->
+    <rect x="112" y="136" width="48" height="24"/>
+    <rect x="232" y="136" width="48" height="24"/>
+    <!-- Row 6  (y=160): cols 1-2, 6-7 -->
+    <rect x="112" y="160" width="48" height="24"/>
+    <rect x="232" y="160" width="48" height="24"/>
+    <!-- Row 7  (y=184): cols 2-4, 6-7 -->
+    <rect x="136" y="184" width="72" height="24"/>
+    <rect x="232" y="184" width="48" height="24"/>
+    <!-- Row 8  (y=208): cols 3-7 (diagonal swoosh start) -->
+    <rect x="160" y="208" width="120" height="24"/>
+    <!-- Row 9  (y=232): cols 4-8 -->
+    <rect x="184" y="232" width="120" height="24"/>
+    <!-- Row 10 (y=256): cols 5-9 -->
+    <rect x="208" y="256" width="120" height="24"/>
+    <!-- Row 11 (y=280): cols 6-10 -->
+    <rect x="232" y="280" width="120" height="24"/>
+    <!-- Row 12 (y=304): cols 6-7, 10-12 -->
+    <rect x="232" y="304" width="48" height="24"/>
+    <rect x="328" y="304" width="72" height="24"/>
+    <!-- Row 13 (y=328): cols 6-7, 11-12 -->
+    <rect x="232" y="328" width="48" height="24"/>
+    <rect x="352" y="328" width="48" height="24"/>
+    <!-- Row 14 (y=352): cols 6-7, 11-12 -->
+    <rect x="232" y="352" width="48" height="24"/>
+    <rect x="352" y="352" width="48" height="24"/>
+    <!-- Row 15 (y=376): cols 1-2, 6-7, 11-12 -->
+    <rect x="112" y="376" width="48" height="24"/>
+    <rect x="232" y="376" width="48" height="24"/>
+    <rect x="352" y="376" width="48" height="24"/>
+    <!-- Row 16 (y=400): cols 1-4, 6-7, 9-12 -->
+    <rect x="112" y="400" width="96" height="24"/>
+    <rect x="232" y="400" width="48" height="24"/>
+    <rect x="304" y="400" width="96" height="24"/>
+    <!-- Row 17 (y=424): cols 2-11 (bottom of S) -->
+    <rect x="136" y="424" width="240" height="24"/>
+    <!-- Row 18 (y=448): cols 6-7 -->
+    <rect x="232" y="448" width="48" height="24"/>
+    <!-- Row 19 (y=472): cols 6-7 (bottom of vertical bar) -->
+    <rect x="232" y="472" width="48" height="24"/>
   </g>
 
-  <!-- Scanlines -->
-  <g fill="#000000" fill-opacity="0.18">
-    <rect x="0" y="0" width="512" height="2"/>
-    <rect x="0" y="4" width="512" height="2"/>
-    <rect x="0" y="8" width="512" height="2"/>
-    <rect x="0" y="12" width="512" height="2"/>
-    <rect x="0" y="16" width="512" height="2"/>
-    <rect x="0" y="20" width="512" height="2"/>
-    <rect x="0" y="24" width="512" height="2"/>
-    <rect x="0" y="28" width="512" height="2"/>
-    <rect x="0" y="32" width="512" height="2"/>
-    <rect x="0" y="36" width="512" height="2"/>
-    <rect x="0" y="40" width="512" height="2"/>
-    <rect x="0" y="44" width="512" height="2"/>
-    <rect x="0" y="48" width="512" height="2"/>
-    <rect x="0" y="52" width="512" height="2"/>
-    <rect x="0" y="56" width="512" height="2"/>
-    <rect x="0" y="60" width="512" height="2"/>
-    <rect x="0" y="64" width="512" height="2"/>
-    <rect x="0" y="68" width="512" height="2"/>
-    <rect x="0" y="72" width="512" height="2"/>
-    <rect x="0" y="76" width="512" height="2"/>
-    <rect x="0" y="80" width="512" height="2"/>
-    <rect x="0" y="84" width="512" height="2"/>
-    <rect x="0" y="88" width="512" height="2"/>
-    <rect x="0" y="92" width="512" height="2"/>
-    <rect x="0" y="96" width="512" height="2"/>
-    <rect x="0" y="100" width="512" height="2"/>
-    <rect x="0" y="104" width="512" height="2"/>
-    <rect x="0" y="108" width="512" height="2"/>
-    <rect x="0" y="112" width="512" height="2"/>
-    <rect x="0" y="116" width="512" height="2"/>
-    <rect x="0" y="120" width="512" height="2"/>
-    <rect x="0" y="124" width="512" height="2"/>
-    <rect x="0" y="128" width="512" height="2"/>
-    <rect x="0" y="132" width="512" height="2"/>
-    <rect x="0" y="136" width="512" height="2"/>
-    <rect x="0" y="140" width="512" height="2"/>
-    <rect x="0" y="144" width="512" height="2"/>
-    <rect x="0" y="148" width="512" height="2"/>
-    <rect x="0" y="152" width="512" height="2"/>
-    <rect x="0" y="156" width="512" height="2"/>
-    <rect x="0" y="160" width="512" height="2"/>
-    <rect x="0" y="164" width="512" height="2"/>
-    <rect x="0" y="168" width="512" height="2"/>
-    <rect x="0" y="172" width="512" height="2"/>
-    <rect x="0" y="176" width="512" height="2"/>
-    <rect x="0" y="180" width="512" height="2"/>
-    <rect x="0" y="184" width="512" height="2"/>
-    <rect x="0" y="188" width="512" height="2"/>
-    <rect x="0" y="192" width="512" height="2"/>
-    <rect x="0" y="196" width="512" height="2"/>
-    <rect x="0" y="200" width="512" height="2"/>
-    <rect x="0" y="204" width="512" height="2"/>
-    <rect x="0" y="208" width="512" height="2"/>
-    <rect x="0" y="212" width="512" height="2"/>
-    <rect x="0" y="216" width="512" height="2"/>
-    <rect x="0" y="220" width="512" height="2"/>
-    <rect x="0" y="224" width="512" height="2"/>
-    <rect x="0" y="228" width="512" height="2"/>
-    <rect x="0" y="232" width="512" height="2"/>
-    <rect x="0" y="236" width="512" height="2"/>
-    <rect x="0" y="240" width="512" height="2"/>
-    <rect x="0" y="244" width="512" height="2"/>
-    <rect x="0" y="248" width="512" height="2"/>
-    <rect x="0" y="252" width="512" height="2"/>
-    <rect x="0" y="256" width="512" height="2"/>
-    <rect x="0" y="260" width="512" height="2"/>
-    <rect x="0" y="264" width="512" height="2"/>
-    <rect x="0" y="268" width="512" height="2"/>
-    <rect x="0" y="272" width="512" height="2"/>
-    <rect x="0" y="276" width="512" height="2"/>
-    <rect x="0" y="280" width="512" height="2"/>
-    <rect x="0" y="284" width="512" height="2"/>
-    <rect x="0" y="288" width="512" height="2"/>
-    <rect x="0" y="292" width="512" height="2"/>
-    <rect x="0" y="296" width="512" height="2"/>
-    <rect x="0" y="300" width="512" height="2"/>
-    <rect x="0" y="304" width="512" height="2"/>
-    <rect x="0" y="308" width="512" height="2"/>
-    <rect x="0" y="312" width="512" height="2"/>
-    <rect x="0" y="316" width="512" height="2"/>
-    <rect x="0" y="320" width="512" height="2"/>
-    <rect x="0" y="324" width="512" height="2"/>
-    <rect x="0" y="328" width="512" height="2"/>
-    <rect x="0" y="332" width="512" height="2"/>
-    <rect x="0" y="336" width="512" height="2"/>
-    <rect x="0" y="340" width="512" height="2"/>
-    <rect x="0" y="344" width="512" height="2"/>
-    <rect x="0" y="348" width="512" height="2"/>
-    <rect x="0" y="352" width="512" height="2"/>
-    <rect x="0" y="356" width="512" height="2"/>
-    <rect x="0" y="360" width="512" height="2"/>
-    <rect x="0" y="364" width="512" height="2"/>
-    <rect x="0" y="368" width="512" height="2"/>
-    <rect x="0" y="372" width="512" height="2"/>
-    <rect x="0" y="376" width="512" height="2"/>
-    <rect x="0" y="380" width="512" height="2"/>
-    <rect x="0" y="384" width="512" height="2"/>
-    <rect x="0" y="388" width="512" height="2"/>
-    <rect x="0" y="392" width="512" height="2"/>
-    <rect x="0" y="396" width="512" height="2"/>
-    <rect x="0" y="400" width="512" height="2"/>
-    <rect x="0" y="404" width="512" height="2"/>
-    <rect x="0" y="408" width="512" height="2"/>
-    <rect x="0" y="412" width="512" height="2"/>
-    <rect x="0" y="416" width="512" height="2"/>
-    <rect x="0" y="420" width="512" height="2"/>
-    <rect x="0" y="424" width="512" height="2"/>
-    <rect x="0" y="428" width="512" height="2"/>
-    <rect x="0" y="432" width="512" height="2"/>
-    <rect x="0" y="436" width="512" height="2"/>
-    <rect x="0" y="440" width="512" height="2"/>
-    <rect x="0" y="444" width="512" height="2"/>
-    <rect x="0" y="448" width="512" height="2"/>
-    <rect x="0" y="452" width="512" height="2"/>
-    <rect x="0" y="456" width="512" height="2"/>
-    <rect x="0" y="460" width="512" height="2"/>
-    <rect x="0" y="464" width="512" height="2"/>
-    <rect x="0" y="468" width="512" height="2"/>
-    <rect x="0" y="472" width="512" height="2"/>
-    <rect x="0" y="476" width="512" height="2"/>
-    <rect x="0" y="480" width="512" height="2"/>
-    <rect x="0" y="484" width="512" height="2"/>
-    <rect x="0" y="488" width="512" height="2"/>
-    <rect x="0" y="492" width="512" height="2"/>
-    <rect x="0" y="496" width="512" height="2"/>
-    <rect x="0" y="500" width="512" height="2"/>
-    <rect x="0" y="504" width="512" height="2"/>
-    <rect x="0" y="508" width="512" height="2"/>
-  </g>
-
-  <!-- Corner brackets (terminal accents) -->
-  <g stroke="#FFB453" stroke-width="6" fill="none" stroke-linecap="square" opacity="0.85">
-    <path d="M 56 96 L 56 56 L 96 56"/>
-    <path d="M 416 56 L 456 56 L 456 96"/>
-    <path d="M 56 416 L 56 456 L 96 456"/>
-    <path d="M 456 416 L 456 456 L 416 456"/>
-  </g>
-
-  <!-- Compounding bars + trend line -->
-  <g filter="url(#glow)">
-    <rect x="160" y="330" width="44" height="80"  fill="url(#bar)" rx="2"/>
-    <rect x="234" y="290" width="44" height="120" fill="url(#bar)" rx="2"/>
-    <rect x="308" y="230" width="44" height="180" fill="url(#bar)" rx="2"/>
-
-    <!-- Trend line piercing upward -->
-    <path
-      d="M 180 320 L 254 280 L 328 220 L 408 132"
-      stroke="#FFB453"
-      stroke-width="9"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      fill="none"
-    />
-
-    <!-- Arrow head -->
-    <path d="M 408 132 L 370 138 L 388 162 Z" fill="#FFB453"/>
-  </g>
-
-  <!-- Centered mono callout -->
-  <text x="256" y="468" text-anchor="middle"
-        font-family="'JetBrains Mono', 'IBM Plex Mono', monospace"
-        font-size="22"
-        font-weight="600"
-        letter-spacing="6"
-        fill="#FFB453"
-        opacity="0.9">COMPOUND</text>
+  <!-- CRT scanline overlay -->
+  <rect width="512" height="512" rx="112" fill="url(#scan)"/>
 </svg>

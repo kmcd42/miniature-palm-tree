@@ -1,4 +1,4 @@
-const CACHE_NAME = 'compound-aether-v2';
+const CACHE_NAME = 'compound-aether-v3';
 const STATIC_ASSETS = [
   '/',
   '/budget',

@@ -70,17 +70,18 @@ function encodePNG(width, height, rgba) {
 function renderIcon(size) {
   const buf = Buffer.alloc(size * size * 4);
 
-  // Background fill with subtle top-down gradient
+  // Background: near-black with a subtle radial vignette toward the edges
+  const cx = size / 2;
+  const cy = size * 0.42;
+  const maxDist = Math.hypot(size, size) * 0.6;
   for (let y = 0; y < size; y++) {
-    const ny = y / size;
-    const r = Math.round(14 - ny * 10);   // 14 → 4
-    const g = Math.round(20 - ny * 13);   // 20 → 7
-    const b = Math.round(24 - ny * 14);   // 24 → 10
     for (let x = 0; x < size; x++) {
       const i = (y * size + x) * 4;
-      buf[i + 0] = r;
-      buf[i + 1] = g;
-      buf[i + 2] = b;
+      const dist = Math.hypot(x - cx, y - cy) / maxDist;
+      const v = Math.max(0, 14 * (1 - dist * 1.15));
+      buf[i + 0] = Math.round(v * 0.7);
+      buf[i + 1] = Math.round(v);
+      buf[i + 2] = Math.round(v * 0.8);
       buf[i + 3] = 255;
     }
   }
@@ -96,106 +97,88 @@ function renderIcon(size) {
     buf[i + 3] = 255;
   };
 
-  // Subtle grid (cyan)
-  const grid = Math.max(8, Math.floor(size / 8));
-  for (let k = grid; k < size; k += grid) {
-    for (let p = 0; p < size; p++) {
-      setPx(k, p, 91, 200, 255, 14);
-      setPx(p, k, 91, 200, 255, 14);
-    }
-  }
-
-  // Scanlines (every 2px, faint)
-  const scanStep = Math.max(2, Math.floor(size / 200));
-  for (let y = 0; y < size; y += scanStep) {
-    for (let x = 0; x < size; x++) setPx(x, y, 0, 0, 0, 24);
-  }
-
-  // Corner brackets (amber)
-  const bThick = Math.max(1, Math.floor(size / 100));
-  const bLen = Math.floor(size * 0.10);
-  const pad = Math.floor(size * 0.115);
-  const drawBracket = (cx, cy, sx, sy) => {
-    for (let i = 0; i < bLen; i++) {
-      for (let t = 0; t < bThick; t++) {
-        setPx(cx + sx * i, cy + sy * t, 255, 180, 83, 220);
-        setPx(cx + sx * t, cy + sy * i, 255, 180, 83, 220);
-      }
-    }
-  };
-  drawBracket(pad, pad, 1, 1);
-  drawBracket(size - 1 - pad, pad, -1, 1);
-  drawBracket(pad, size - 1 - pad, 1, -1);
-  drawBracket(size - 1 - pad, size - 1 - pad, -1, -1);
-
-  // Three rising amber bars
-  const m = size;
-  const barW = Math.floor(m * 0.10);
-  const gap = Math.floor(m * 0.035);
-  const baseY = Math.floor(m * 0.76);
-  const heights = [0.18, 0.30, 0.45];
-  const totalW = 3 * barW + 2 * gap;
-  const startX = Math.floor((m - totalW) / 2);
-  const barTops = [];
-  for (let b = 0; b < 3; b++) {
-    const bx = startX + b * (barW + gap);
-    const bh = Math.floor(m * heights[b]);
-    const top = baseY - bh;
-    barTops.push({ x: bx + Math.floor(barW / 2), y: top });
-    for (let dy = 0; dy < bh; dy++) {
-      const intensity = 1 - (dy / bh) * 0.35;
-      const r2 = 255;
-      const g2 = Math.round(180 - (1 - intensity) * 40);
-      const b2 = 83;
-      for (let dx = 0; dx < barW; dx++) {
-        setPx(bx + dx, baseY - dy, r2, g2, b2, Math.round(255 * intensity));
-      }
-    }
-  }
-
-  // Trend line through bar tops + extending to upper right
-  const points = [
-    { x: barTops[0].x, y: barTops[0].y - 4 },
-    { x: barTops[1].x, y: barTops[1].y - 4 },
-    { x: barTops[2].x, y: barTops[2].y - 4 },
-    { x: Math.floor(m * 0.86), y: Math.floor(m * 0.20) },
+  // Pixel-art dollar sign — same 14×20 grid as icon.svg.
+  // 'X' = filled phosphor cell, '.' = empty
+  const pattern = [
+    '......XX......', // 0   top of vertical bar
+    '......XX......', // 1
+    '..XXXXXXXXXX..', // 2   top of S
+    '.XXXX.XX.XXXX.', // 3
+    '.XX...XX...XX.', // 4
+    '.XX...XX......', // 5
+    '.XX...XX......', // 6
+    '..XXX.XX......', // 7
+    '...XXXXX......', // 8   diagonal swoosh
+    '....XXXXX.....', // 9
+    '.....XXXXX....', // 10
+    '......XXXXX...', // 11
+    '......XX..XXX.', // 12
+    '......XX...XX.', // 13
+    '......XX...XX.', // 14
+    '.XX...XX...XX.', // 15
+    '.XXXX.XX.XXXX.', // 16
+    '..XXXXXXXXXX..', // 17  bottom of S
+    '......XX......', // 18  bottom of vertical bar
+    '......XX......', // 19
   ];
-  const lineThick = Math.max(1, Math.floor(size / 100));
-  const drawLine = (x1, y1, x2, y2, thickness) => {
-    const steps = Math.ceil(Math.hypot(x2 - x1, y2 - y1));
-    for (let s = 0; s <= steps; s++) {
-      const t = s / steps;
-      const x = x1 + (x2 - x1) * t;
-      const y = y1 + (y2 - y1) * t;
-      for (let dx = -thickness; dx <= thickness; dx++) {
-        for (let dy = -thickness; dy <= thickness; dy++) {
-          const d = Math.hypot(dx, dy);
-          if (d <= thickness) {
-            const a = Math.max(0, 240 - Math.floor((d / thickness) * 160));
-            setPx(Math.round(x + dx), Math.round(y + dy), 255, 180, 83, a);
-          }
+  const COLS = 14;
+  const ROWS = pattern.length;
+  // Match the SVG: 24px cells in a 512 canvas with 88px x-margin + 16px y-margin.
+  // Scale linearly to the requested output size.
+  const cell = (24 / 512) * size;
+  const xPad = (88 / 512) * size;
+  const yPad = (16 / 512) * size;
+
+  // Phosphor green
+  const GR = [93, 232, 142];
+
+  // First pass: fill each pixel cell as a tightly-packed block
+  for (let row = 0; row < ROWS; row++) {
+    for (let col = 0; col < COLS; col++) {
+      if (pattern[row][col] !== 'X') continue;
+      const x0 = Math.round(xPad + col * cell);
+      const y0 = Math.round(yPad + row * cell);
+      const x1 = Math.round(xPad + (col + 1) * cell);
+      const y1 = Math.round(yPad + (row + 1) * cell);
+      for (let yy = y0; yy < y1; yy++) {
+        for (let xx = x0; xx < x1; xx++) {
+          setPx(xx, yy, GR[0], GR[1], GR[2], 255);
         }
       }
     }
-  };
-  for (let i = 0; i < points.length - 1; i++) {
-    drawLine(points[i].x, points[i].y, points[i + 1].x, points[i + 1].y, lineThick + 1);
   }
 
-  // Arrow head (filled triangle pointing up-right)
-  const ah = Math.max(6, Math.floor(size / 22));
-  const tip = points[points.length - 1];
-  for (let dy = -ah; dy <= ah; dy++) {
-    for (let dx = -ah; dx <= ah; dx++) {
-      if (dx <= 0 && dy >= 0 && Math.abs(dx) + Math.abs(dy) < ah) {
-        setPx(tip.x + dx, tip.y + dy, 255, 180, 83, 230);
+  // Soft phosphor glow — splat a low-alpha green halo around each filled cell.
+  // Cheaper than a real Gaussian blur, looks similar at icon sizes.
+  const glowRadius = Math.max(2, Math.round(cell * 0.45));
+  for (let row = 0; row < ROWS; row++) {
+    for (let col = 0; col < COLS; col++) {
+      if (pattern[row][col] !== 'X') continue;
+      const ccx = Math.round(xPad + (col + 0.5) * cell);
+      const ccy = Math.round(yPad + (row + 0.5) * cell);
+      for (let dy = -glowRadius; dy <= glowRadius; dy++) {
+        for (let dx = -glowRadius; dx <= glowRadius; dx++) {
+          const d = Math.hypot(dx, dy) / glowRadius;
+          if (d > 1) continue;
+          // Skip the cell itself (already filled)
+          if (Math.abs(dx) < cell * 0.5 && Math.abs(dy) < cell * 0.5) continue;
+          const a = Math.round(60 * (1 - d));
+          if (a > 0) setPx(ccx + dx, ccy + dy, GR[0], GR[1], GR[2], a);
+        }
       }
     }
   }
 
-  // Rounded corner mask — paint outer corners with the background color so the
-  // visible silhouette has the iOS-style rounded square.
-  const r = Math.floor(size * 0.18);
+  // CRT scanlines — every 4 vertical pixels, a 2px dark band
+  const scanPeriod = Math.max(3, Math.round(size / 128));
+  for (let y = 0; y < size; y++) {
+    if (y % scanPeriod < Math.max(1, scanPeriod / 2)) {
+      for (let x = 0; x < size; x++) setPx(x, y, 0, 0, 0, 90);
+    }
+  }
+
+  // Rounded corner mask — iOS-style rounded square. ~22% radius.
+  const r = Math.floor(size * 0.22);
   const cornerFill = (cx, cy, dxSign, dySign) => {
     for (let dy = 0; dy <= r; dy++) {
       for (let dx = 0; dx <= r; dx++) {
@@ -205,9 +188,9 @@ function renderIcon(size) {
           const y = cy + dySign * dy;
           if (x >= 0 && y >= 0 && x < size && y < size) {
             const i = (y * size + x) * 4;
-            buf[i + 0] = 4;
-            buf[i + 1] = 7;
-            buf[i + 2] = 10;
+            buf[i + 0] = 0;
+            buf[i + 1] = 0;
+            buf[i + 2] = 0;
             buf[i + 3] = 255;
           }
         }

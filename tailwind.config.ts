@@ -75,7 +75,9 @@ const config: Config = {
       fontFamily: {
         sans: ['"IBM Plex Sans"', '-apple-system', 'BlinkMacSystemFont', '"SF Pro Text"', '"Helvetica Neue"', 'Arial', 'sans-serif'],
         mono: ['"JetBrains Mono"', '"IBM Plex Mono"', 'Menlo', 'Monaco', 'Consolas', 'monospace'],
-        serif: ['"Instrument Serif"', 'Georgia', '"Times New Roman"', 'serif'],
+        // No serif — `font-serif` is aliased to the mono stack so any leftover
+        // usage still reads as terminal type instead of falling back to system serif.
+        serif: ['"JetBrains Mono"', '"IBM Plex Mono"', 'Menlo', 'Monaco', 'Consolas', 'monospace'],
       },
       borderRadius: {
         'panel': '4px',
