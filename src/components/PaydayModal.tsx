@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { useBudget } from '@/lib/context';
-import { formatCurrency, toWeekly, buildCompleteBudgetItems } from '@/lib/calculations';
+import { formatCurrency, toWeekly, buildCompleteBudgetItems, getEffectiveWeeklyAmount } from '@/lib/calculations';
 import { FitNumber, CategoryBadge } from '@/components/GlassCard';
 import type { BudgetCategory } from '@/types/budget';
 
@@ -57,9 +57,10 @@ export default function PaydayModal({ onClose }: PaydayModalProps) {
     return out;
   }, [allBudgetItems, multiplier]);
 
-  // Non-savings transfer reference. Leaf items only — parents are auto-summed
-  // and aren't an actual transfer destination. No stepper / no stored balance:
-  // these are surfaced so the user can see exact amounts to move manually.
+  // Non-savings transfer reference — top-level items only. Parents roll up
+  // their children so the user sees combined totals (e.g. one "Housing" line)
+  // rather than each sub-item. No stepper / no stored balance: these are
+  // surfaced so the user can see exact amounts to move manually.
   const otherItems = useMemo(() => {
     const out: Array<{
       id: string;
@@ -68,10 +69,9 @@ export default function PaydayModal({ onClose }: PaydayModalProps) {
       periodAmount: number;
     }> = [];
     for (const item of allBudgetItems) {
+      if (item.parentId) continue;
       if (item.category === 'savings') continue;
-      const hasChildren = allBudgetItems.some((i) => i.parentId === item.id);
-      if (hasChildren) continue;
-      const weekly = toWeekly(item.amount, item.frequency);
+      const weekly = getEffectiveWeeklyAmount(item, allBudgetItems);
       if (weekly <= 0) continue;
       out.push({
         id: item.id,
