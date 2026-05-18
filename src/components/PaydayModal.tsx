@@ -2,8 +2,9 @@
 
 import React, { useState, useMemo } from 'react';
 import { useBudget } from '@/lib/context';
-import { formatCurrency, toWeekly, buildCompleteBudgetItems, calculateWeeklyByCategoryEffective } from '@/lib/calculations';
-import { FitNumber } from '@/components/GlassCard';
+import { formatCurrency, toWeekly, buildCompleteBudgetItems } from '@/lib/calculations';
+import { FitNumber, CategoryBadge } from '@/components/GlassCard';
+import type { BudgetCategory } from '@/types/budget';
 
 interface PaydayModalProps {
   onClose: () => void;
@@ -31,18 +32,6 @@ export default function PaydayModal({ onClose }: PaydayModalProps) {
     [budgetItems, investments, savingsBuckets, mortgages, sharedHousing, settings.afterTaxWeeklyIncome]
   );
 
-  // Period totals by category — informational only. Necessities and Costs
-  // generally auto-execute (rent, subscriptions, etc.) so we don't track them
-  // here; we just surface what's flowing out this period.
-  const periodByCategory = useMemo(() => {
-    const weekly = calculateWeeklyByCategoryEffective(allBudgetItems);
-    return {
-      necessity: weekly.necessity * multiplier,
-      cost: weekly.cost * multiplier,
-      savings: weekly.savings * multiplier,
-    };
-  }, [allBudgetItems, multiplier]);
-
   const savingsItems = useMemo(() => {
     const out: Array<{
       id: string;
@@ -65,6 +54,38 @@ export default function PaydayModal({ onClose }: PaydayModalProps) {
         });
       }
     });
+    return out;
+  }, [allBudgetItems, multiplier]);
+
+  // Non-savings transfer reference. Leaf items only — parents are auto-summed
+  // and aren't an actual transfer destination. No stepper / no stored balance:
+  // these are surfaced so the user can see exact amounts to move manually.
+  const otherItems = useMemo(() => {
+    const out: Array<{
+      id: string;
+      name: string;
+      category: BudgetCategory;
+      periodAmount: number;
+    }> = [];
+    for (const item of allBudgetItems) {
+      if (item.category === 'savings') continue;
+      const hasChildren = allBudgetItems.some((i) => i.parentId === item.id);
+      if (hasChildren) continue;
+      const weekly = toWeekly(item.amount, item.frequency);
+      if (weekly <= 0) continue;
+      out.push({
+        id: item.id,
+        name: item.name,
+        category: item.category,
+        periodAmount: weekly * multiplier,
+      });
+    }
+    const order: Record<BudgetCategory, number> = { necessity: 0, cost: 1, savings: 2 };
+    out.sort((a, b) =>
+      order[a.category] !== order[b.category]
+        ? order[a.category] - order[b.category]
+        : a.name.localeCompare(b.name)
+    );
     return out;
   }, [allBudgetItems, multiplier]);
 
@@ -154,41 +175,20 @@ export default function PaydayModal({ onClose }: PaydayModalProps) {
             </div>
           </div>
 
-          {/* Period-out FYI — necessity + cost surfaces what auto-flows this pay
-              period. Informational only; not tracked or adjusted here. */}
-          <div className="px-5 py-3 border-b border-graphite-600 bg-graphite-850/50">
-            <div className="font-mono text-[10px] tracking-[0.18em] uppercase text-ink-500 mb-2">
-              ▸ Auto-out this period (FYI)
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <div className="font-mono text-[9px] tracking-[0.16em] uppercase text-phosphor-red/80 mb-0.5">
-                  Necessity
-                </div>
-                <div className="mono-num text-base text-ink-100">
-                  {formatCurrency(periodByCategory.necessity)}
-                </div>
-              </div>
-              <div>
-                <div className="font-mono text-[9px] tracking-[0.16em] uppercase text-phosphor-amber/80 mb-0.5">
-                  Cost
-                </div>
-                <div className="mono-num text-base text-ink-100">
-                  {formatCurrency(periodByCategory.cost)}
-                </div>
-              </div>
-            </div>
-          </div>
-
           {/* Items */}
           <div className="px-5 py-4 overflow-y-auto flex-1" style={{ maxHeight: '50vh' }}>
-            {savingsItems.length === 0 ? (
+            {savingsItems.length === 0 && otherItems.length === 0 ? (
               <div className="text-center py-8 text-ink-500 font-mono text-xs">
-                <p className="mb-2">NO SAVINGS ITEMS</p>
-                <p className="text-ink-700 text-[11px]">Add savings items in the Budget tab.</p>
+                <p className="mb-2">NO BUDGET ITEMS</p>
+                <p className="text-ink-700 text-[11px]">Add items in the Budget tab.</p>
               </div>
             ) : (
               <div className="space-y-3">
+                {savingsItems.length > 0 && (
+                  <div className="font-mono text-[10px] tracking-[0.18em] uppercase text-ink-500">
+                    ▸ Savings · Updates balance
+                  </div>
+                )}
                 {savingsItems.map((item) => {
                   const currentAmount = adjustments[item.id] || 0;
                   const linkedBucket = item.linkedToType === 'savings_bucket' && item.linkedToId
@@ -239,6 +239,30 @@ export default function PaydayModal({ onClose }: PaydayModalProps) {
                     </div>
                   );
                 })}
+
+                {otherItems.length > 0 && (
+                  <>
+                    <div className="font-mono text-[10px] tracking-[0.18em] uppercase text-ink-500 pt-2">
+                      ▸ Other transfers · FYI
+                    </div>
+                    <div className="panel divide-y divide-graphite-600">
+                      {otherItems.map((item) => (
+                        <div
+                          key={item.id}
+                          className="flex items-center justify-between gap-3 px-3 py-2"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <CategoryBadge category={item.category} />
+                            <span className="text-ink-300 text-sm truncate">{item.name}</span>
+                          </div>
+                          <span className="mono-num text-sm text-ink-100 shrink-0">
+                            {formatCurrency(item.periodAmount, false)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
             )}
           </div>
