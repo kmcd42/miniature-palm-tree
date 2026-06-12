@@ -4,7 +4,7 @@ import React, { useState, useRef } from 'react';
 import TabBar from '@/components/TabBar';
 import Panel, { CardHeader, StatusDot } from '@/components/GlassCard';
 import { useBudget } from '@/lib/context';
-import { exportData, importData } from '@/lib/storage';
+import { downloadExport, importData } from '@/lib/storage';
 import { formatCurrency, getCurrentAge } from '@/lib/calculations';
 
 export default function SettingsPage() {
@@ -26,16 +26,7 @@ export default function SettingsPage() {
   const derivedAge = getCurrentAge(settings);
 
   const handleExport = () => {
-    const dataStr = exportData();
-    const blob = new Blob([dataStr], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `compound-backup-${new Date().toISOString().split('T')[0]}.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    downloadExport();
     setShowExportSuccess(true);
     setTimeout(() => setShowExportSuccess(false), 3000);
   };
@@ -111,13 +102,11 @@ export default function SettingsPage() {
             <CardHeader title="Income" subtitle="After-tax weekly take-home" />
             <div>
               <label className="term-label-plain block mb-1.5">▸ After-tax weekly income</label>
-              <input
-                type="number"
-                value={settings.afterTaxWeeklyIncome || ''}
-                onChange={(e) => updateSetting('afterTaxWeeklyIncome', parseFloat(e.target.value) || 0)}
+              <NumField
+                value={settings.afterTaxWeeklyIncome}
+                onCommit={(v) => updateSetting('afterTaxWeeklyIncome', v)}
                 placeholder="Your weekly take-home"
                 step="0.01" min="0"
-                className="term-input"
               />
               <p className="text-[11px] text-ink-500 mt-1.5 font-mono tracking-[0.14em] uppercase">
                 ▸ MONTHLY {formatCurrency((settings.afterTaxWeeklyIncome * 52) / 12)} · YEARLY {formatCurrency(settings.afterTaxWeeklyIncome * 52)}
@@ -147,24 +136,20 @@ export default function SettingsPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="term-label-plain block mb-1.5">▸ Retirement age</label>
-                  <input
-                    type="number"
-                    value={settings.retirementAge || ''}
-                    onChange={(e) => updateSetting('retirementAge', parseInt(e.target.value) || 0)}
+                  <NumField
+                    value={settings.retirementAge}
+                    onCommit={(v) => updateSetting('retirementAge', v)}
                     placeholder="67"
-                    min="40" max="100"
-                    className="term-input"
+                    min="18" max="100" integer
                   />
                 </div>
                 <div>
                   <label className="term-label-plain block mb-1.5">▸ Life expectancy</label>
-                  <input
-                    type="number"
-                    value={settings.lifeExpectancy || ''}
-                    onChange={(e) => updateSetting('lifeExpectancy', parseInt(e.target.value) || 0)}
+                  <NumField
+                    value={settings.lifeExpectancy}
+                    onCommit={(v) => updateSetting('lifeExpectancy', v)}
                     placeholder="90"
-                    min="60" max="120"
-                    className="term-input"
+                    min="30" max="120" integer
                   />
                   <p className="text-[11px] text-ink-500 mt-1">Drives drawdown horizon</p>
                 </div>
@@ -173,25 +158,21 @@ export default function SettingsPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="term-label-plain block mb-1.5">▸ Inflation %/yr</label>
-                  <input
-                    type="number"
-                    value={settings.inflationRate || ''}
-                    onChange={(e) => updateSetting('inflationRate', parseFloat(e.target.value) || 0)}
+                  <NumField
+                    value={settings.inflationRate}
+                    onCommit={(v) => updateSetting('inflationRate', v)}
                     placeholder="2.5"
                     step="0.1" min="0" max="20"
-                    className="term-input"
                   />
                   <p className="text-[11px] text-ink-500 mt-1">Real-dollar projection</p>
                 </div>
                 <div>
                   <label className="term-label-plain block mb-1.5">▸ Safe withdrawal %</label>
-                  <input
-                    type="number"
-                    value={settings.safeWithdrawalRate || ''}
-                    onChange={(e) => updateSetting('safeWithdrawalRate', parseFloat(e.target.value) || 0)}
+                  <NumField
+                    value={settings.safeWithdrawalRate}
+                    onCommit={(v) => updateSetting('safeWithdrawalRate', v)}
                     placeholder="4.0"
-                    step="0.1" min="1" max="10"
-                    className="term-input"
+                    step="0.1" min="0.5" max="10"
                   />
                   <p className="text-[11px] text-ink-500 mt-1">Default 4% (Trinity study)</p>
                 </div>
@@ -218,26 +199,22 @@ export default function SettingsPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="term-label-plain block mb-1.5">▸ Combined weekly</label>
-                  <input
-                    type="number"
-                    value={settings.nzSuperWeeklyAmount || ''}
-                    onChange={(e) => updateSetting('nzSuperWeeklyAmount', parseFloat(e.target.value) || 0)}
+                  <NumField
+                    value={settings.nzSuperWeeklyAmount}
+                    onCommit={(v) => updateSetting('nzSuperWeeklyAmount', v)}
                     placeholder="804"
-                    step="1" min="0"
-                    className="term-input"
+                    step="1" min="0" max="10000"
                     disabled={!settings.includeNzSuper}
                   />
                   <p className="text-[11px] text-ink-500 mt-1">After-tax, today&apos;s $</p>
                 </div>
                 <div>
                   <label className="term-label-plain block mb-1.5">▸ Eligibility age</label>
-                  <input
-                    type="number"
-                    value={settings.nzSuperEligibilityAge || ''}
-                    onChange={(e) => updateSetting('nzSuperEligibilityAge', parseInt(e.target.value) || 0)}
+                  <NumField
+                    value={settings.nzSuperEligibilityAge}
+                    onCommit={(v) => updateSetting('nzSuperEligibilityAge', v)}
                     placeholder="65"
-                    min="55" max="80"
-                    className="term-input"
+                    min="50" max="80" integer
                     disabled={!settings.includeNzSuper}
                   />
                   <p className="text-[11px] text-ink-500 mt-1">NZ default 65</p>
@@ -265,25 +242,21 @@ export default function SettingsPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="term-label-plain block mb-1.5">▸ Massey · No Frills</label>
-                  <input
-                    type="number"
-                    value={settings.masseyTwoPersonNoFrills || ''}
-                    onChange={(e) => updateSetting('masseyTwoPersonNoFrills', parseFloat(e.target.value) || 0)}
+                  <NumField
+                    value={settings.masseyTwoPersonNoFrills}
+                    onCommit={(v) => updateSetting('masseyTwoPersonNoFrills', v)}
                     placeholder="902"
                     step="1" min="0"
-                    className="term-input"
                   />
                   <p className="text-[11px] text-ink-500 mt-1">2-person urban /wk</p>
                 </div>
                 <div>
                   <label className="term-label-plain block mb-1.5">▸ Massey · Choices</label>
-                  <input
-                    type="number"
-                    value={settings.masseyTwoPersonChoices || ''}
-                    onChange={(e) => updateSetting('masseyTwoPersonChoices', parseFloat(e.target.value) || 0)}
+                  <NumField
+                    value={settings.masseyTwoPersonChoices}
+                    onCommit={(v) => updateSetting('masseyTwoPersonChoices', v)}
                     placeholder="1533"
                     step="1" min="0"
-                    className="term-input"
                   />
                   <p className="text-[11px] text-ink-500 mt-1">2-person urban /wk</p>
                 </div>
@@ -358,6 +331,43 @@ export default function SettingsPage() {
 
       <TabBar />
     </main>
+  );
+}
+
+// Numeric input that keeps a local draft while typing and only commits a
+// parsed value on blur — so reducer-side clamping never fights the keyboard.
+function NumField({
+  value, onCommit, step, min, max, placeholder, disabled, integer,
+}: {
+  value: number;
+  onCommit: (v: number) => void;
+  step?: string;
+  min?: string;
+  max?: string;
+  placeholder?: string;
+  disabled?: boolean;
+  integer?: boolean;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+
+  return (
+    <input
+      type="number"
+      value={draft ?? (value || '')}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => {
+        if (draft !== null) {
+          const parsed = integer ? parseInt(draft, 10) : parseFloat(draft);
+          if (Number.isFinite(parsed)) onCommit(parsed);
+        }
+        setDraft(null);
+      }}
+      onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+      placeholder={placeholder}
+      step={step} min={min} max={max}
+      disabled={disabled}
+      className="term-input"
+    />
   );
 }
 

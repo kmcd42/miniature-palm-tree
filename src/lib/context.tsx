@@ -16,6 +16,7 @@ import {
   INITIAL_STORE,
 } from '@/types/budget';
 import { loadStore, saveStore } from './storage';
+import { sanitizeSettingsUpdate } from './validation';
 
 // Action types
 type Action =
@@ -60,7 +61,7 @@ function reducer(state: BudgetStore, action: Action): BudgetStore {
         ...state,
         settings: {
           ...state.settings,
-          ...action.payload,
+          ...sanitizeSettingsUpdate(state.settings, action.payload),
           updatedAt: now,
         },
       };

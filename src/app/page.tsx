@@ -5,6 +5,7 @@ import TabBar from '@/components/TabBar';
 import Panel, { CardHeader, FitNumber, StatusDot, ProgressBar } from '@/components/GlassCard';
 import { WealthLineGraph } from '@/components/Charts';
 import PaydayModal from '@/components/PaydayModal';
+import ExportReminder from '@/components/ExportReminder';
 import { useBudget } from '@/lib/context';
 import {
   formatCurrency,
@@ -368,6 +369,8 @@ export default function Dashboard() {
                 ))}
               </section>
             )}
+
+            <ExportReminder />
           </div>
         )}
       </div>
