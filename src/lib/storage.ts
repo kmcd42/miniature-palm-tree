@@ -1,8 +1,14 @@
 import { BudgetStore, INITIAL_STORE, UserSettings, DEFAULT_SETTINGS } from '@/types/budget';
+import { sanitizeSettings } from './validation';
 
 const STORAGE_KEY = 'compound-data';
 const LEGACY_STORAGE_KEY = 'budget-clarity-data';
+const LAST_EXPORT_KEY = 'compound-last-export';
+const EXPORT_SNOOZE_KEY = 'compound-export-snooze';
 const STORAGE_VERSION = 2;
+
+const EXPORT_STALE_MS = 30 * 24 * 60 * 60 * 1000; // remind after 30 days
+const EXPORT_SNOOZE_MS = 14 * 24 * 60 * 60 * 1000; // "later" hides for 14 days
 
 interface StorageWrapper {
   version: number;
@@ -132,6 +138,41 @@ export function exportData(): string {
   }, null, 2);
 }
 
+// Trigger a JSON backup download and record the export time
+export function downloadExport(): void {
+  const blob = new Blob([exportData()], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `compound-backup-${new Date().toISOString().split('T')[0]}.json`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+  localStorage.setItem(LAST_EXPORT_KEY, String(Date.now()));
+}
+
+export function getLastExportedAt(): number | null {
+  if (typeof window === 'undefined') return null;
+  const raw = Number(localStorage.getItem(LAST_EXPORT_KEY));
+  return raw > 0 ? raw : null;
+}
+
+export function snoozeExportReminder(): void {
+  localStorage.setItem(EXPORT_SNOOZE_KEY, String(Date.now()));
+}
+
+// Whether to nudge the user to back up: data exists, the reminder isn't
+// snoozed, and the last export is missing or older than the stale window.
+export function shouldRemindExport(hasData: boolean): boolean {
+  if (typeof window === 'undefined' || !hasData) return false;
+  const now = Date.now();
+  const snoozedAt = Number(localStorage.getItem(EXPORT_SNOOZE_KEY)) || 0;
+  if (now - snoozedAt < EXPORT_SNOOZE_MS) return false;
+  const lastExport = getLastExportedAt() ?? 0;
+  return now - lastExport > EXPORT_STALE_MS;
+}
+
 // Import data from JSON backup
 export function importData(jsonString: string): BudgetStore | null {
   try {
@@ -147,6 +188,8 @@ export function importData(jsonString: string): BudgetStore | null {
     if (!store.settings || !Array.isArray(store.budgetItems)) {
       throw new Error('Missing required fields');
     }
+
+    store.settings = sanitizeSettings(store.settings);
 
     saveStore(store);
     return store;
