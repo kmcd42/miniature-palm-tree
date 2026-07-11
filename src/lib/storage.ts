@@ -1,5 +1,5 @@
 import { BudgetStore, INITIAL_STORE, UserSettings, DEFAULT_SETTINGS } from '@/types/budget';
-import { sanitizeSettings } from './validation';
+import { sanitizeStore } from './validation';
 
 const STORAGE_KEY = 'compound-data';
 const LEGACY_STORAGE_KEY = 'budget-clarity-data';
@@ -99,17 +99,25 @@ export function loadStore(): BudgetStore {
 
     const migrated = migrateStore(wrapper.data, version);
 
+    // Sanitize on every load so a corrupted or tampered store can't feed
+    // NaN/strings into the calculation layer
+    const clean = sanitizeStore(migrated);
+    if (!clean) {
+      console.error('Stored budget data is not a valid store; starting fresh');
+      return INITIAL_STORE;
+    }
+
     // If we migrated, persist immediately so it sticks
     if (version !== STORAGE_VERSION) {
       const newWrapper: StorageWrapper = {
         version: STORAGE_VERSION,
-        data: migrated,
+        data: clean,
         lastUpdated: Date.now(),
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(newWrapper));
     }
 
-    return migrated;
+    return clean;
   } catch (error) {
     console.error('Failed to load budget data:', error);
     return INITIAL_STORE;
@@ -147,13 +155,113 @@ export function exportData(): string {
   }, null, 2);
 }
 
-// Trigger a JSON backup download and record the export time
-export function downloadExport(): void {
-  const blob = new Blob([exportData()], { type: 'application/json' });
+// =========================================================================
+// ENCRYPTED BACKUPS (optional passphrase)
+//
+// AES-256-GCM with a PBKDF2-SHA256 derived key. The backup file is the
+// artifact most likely to end up in email/cloud storage, so it gets the
+// option of real encryption.
+// =========================================================================
+
+const ENCRYPTED_FORMAT = 'compound-encrypted-v1';
+const PBKDF2_ITERATIONS = 310_000;
+
+function toBase64(bytes: Uint8Array): string {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+function fromBase64(b64: string): Uint8Array {
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+async function deriveKey(passphrase: string, salt: Uint8Array): Promise<CryptoKey> {
+  const material = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(passphrase),
+    'PBKDF2',
+    false,
+    ['deriveKey']
+  );
+  return crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt: salt as BufferSource, iterations: PBKDF2_ITERATIONS, hash: 'SHA-256' },
+    material,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt']
+  );
+}
+
+export async function encryptBackup(plaintext: string, passphrase: string): Promise<string> {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await deriveKey(passphrase, salt);
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv: iv as BufferSource },
+    key,
+    new TextEncoder().encode(plaintext)
+  );
+  return JSON.stringify({
+    format: ENCRYPTED_FORMAT,
+    kdf: 'PBKDF2-SHA256',
+    iterations: PBKDF2_ITERATIONS,
+    salt: toBase64(salt),
+    iv: toBase64(iv),
+    ciphertext: toBase64(new Uint8Array(ciphertext)),
+  }, null, 2);
+}
+
+// Throws on a wrong passphrase or tampered file (GCM auth failure)
+export async function decryptBackup(jsonString: string, passphrase: string): Promise<string> {
+  const parsed = JSON.parse(jsonString);
+  if (parsed.format !== ENCRYPTED_FORMAT) throw new Error('Not an encrypted backup');
+  const iterations = typeof parsed.iterations === 'number' ? parsed.iterations : PBKDF2_ITERATIONS;
+  const salt = fromBase64(parsed.salt);
+  const material = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(passphrase),
+    'PBKDF2',
+    false,
+    ['deriveKey']
+  );
+  const key = await crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt: salt as BufferSource, iterations, hash: 'SHA-256' },
+    material,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['decrypt']
+  );
+  const plaintext = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: fromBase64(parsed.iv) as BufferSource },
+    key,
+    fromBase64(parsed.ciphertext) as BufferSource
+  );
+  return new TextDecoder().decode(plaintext);
+}
+
+export function isEncryptedBackup(jsonString: string): boolean {
+  try {
+    return JSON.parse(jsonString)?.format === ENCRYPTED_FORMAT;
+  } catch {
+    return false;
+  }
+}
+
+// Trigger a JSON backup download and record the export time.
+// With a passphrase the file is AES-GCM encrypted.
+export async function downloadExport(passphrase?: string): Promise<void> {
+  const content = passphrase ? await encryptBackup(exportData(), passphrase) : exportData();
+  const blob = new Blob([content], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = `compound-backup-${new Date().toISOString().split('T')[0]}.json`;
+  link.download = `compound-backup-${new Date().toISOString().split('T')[0]}${passphrase ? '.encrypted' : ''}.json`;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
@@ -182,7 +290,8 @@ export function shouldRemindExport(hasData: boolean): boolean {
   return now - lastExport > EXPORT_STALE_MS;
 }
 
-// Import data from JSON backup
+// Import data from JSON backup. Every field is validated and clamped;
+// an unrecognizable file is rejected without touching stored data.
 export function importData(jsonString: string): BudgetStore | null {
   try {
     const parsed = JSON.parse(jsonString);
@@ -192,13 +301,12 @@ export function importData(jsonString: string): BudgetStore | null {
     }
 
     const incomingVersion = typeof parsed.version === 'number' ? parsed.version : 1;
-    const store = migrateStore(parsed.data as BudgetStore, incomingVersion);
+    const migrated = migrateStore(parsed.data as BudgetStore, incomingVersion);
 
-    if (!store.settings || !Array.isArray(store.budgetItems)) {
-      throw new Error('Missing required fields');
+    const store = sanitizeStore(migrated);
+    if (!store) {
+      throw new Error('Not a valid backup file');
     }
-
-    store.settings = sanitizeSettings(store.settings);
 
     saveStore(store);
     return store;

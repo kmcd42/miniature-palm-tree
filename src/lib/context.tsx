@@ -1,7 +1,10 @@
 'use client';
 
 import React, { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
-import { v4 as uuidv4 } from 'uuid';
+
+// Native UUIDs — available in every browser this PWA targets, and one less
+// dependency to audit
+const uuidv4 = () => crypto.randomUUID();
 import {
   BudgetStore,
   BudgetItem,

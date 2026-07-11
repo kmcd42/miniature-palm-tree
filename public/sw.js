@@ -1,4 +1,5 @@
-const CACHE_NAME = 'compound-aether-v3';
+const CACHE_NAME = 'compound-aether-v4';
+const MAX_CACHE_ENTRIES = 80;
 const STATIC_ASSETS = [
   '/',
   '/budget',
@@ -31,10 +32,22 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
+// Drop oldest entries once the cache grows past the cap
+async function trimCache(cache) {
+  const keys = await cache.keys();
+  if (keys.length <= MAX_CACHE_ENTRIES) return;
+  for (const key of keys.slice(0, keys.length - MAX_CACHE_ENTRIES)) {
+    await cache.delete(key);
+  }
+}
+
 // Fetch event - network first, fallback to cache
 self.addEventListener('fetch', (event) => {
   // Skip non-GET requests
   if (event.request.method !== 'GET') return;
+
+  // Same-origin only — never cache (or serve) third-party responses
+  if (new URL(event.request.url).origin !== self.location.origin) return;
 
   // Skip browser-sync and hot reload in development
   if (event.request.url.includes('_next') ||
@@ -50,9 +63,9 @@ self.addEventListener('fetch', (event) => {
         const responseClone = response.clone();
 
         caches.open(CACHE_NAME).then((cache) => {
-          // Only cache successful responses
-          if (response.status === 200) {
-            cache.put(event.request, responseClone);
+          // Only cache successful same-origin responses
+          if (response.status === 200 && response.type === 'basic') {
+            cache.put(event.request, responseClone).then(() => trimCache(cache));
           }
         });
 

@@ -4,7 +4,7 @@ import React, { useState, useRef } from 'react';
 import TabBar from '@/components/TabBar';
 import Panel, { CardHeader, StatusDot } from '@/components/GlassCard';
 import { useBudget } from '@/lib/context';
-import { downloadExport, importData, clearAllAppData } from '@/lib/storage';
+import { downloadExport, importData, clearAllAppData, isEncryptedBackup, decryptBackup } from '@/lib/storage';
 import { formatCurrency, getCurrentAge } from '@/lib/calculations';
 
 export default function SettingsPage() {
@@ -12,6 +12,7 @@ export default function SettingsPage() {
   const [showExportSuccess, setShowExportSuccess] = useState(false);
   const [showImportSuccess, setShowImportSuccess] = useState(false);
   const [importError, setImportError] = useState('');
+  const [passphrase, setPassphrase] = useState('');
   const [clearArmed, setClearArmed] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -33,8 +34,8 @@ export default function SettingsPage() {
   const { settings } = store;
   const derivedAge = getCurrentAge(settings);
 
-  const handleExport = () => {
-    downloadExport();
+  const handleExport = async () => {
+    await downloadExport(passphrase || undefined);
     setShowExportSuccess(true);
     setTimeout(() => setShowExportSuccess(false), 3000);
   };
@@ -45,8 +46,22 @@ export default function SettingsPage() {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (event) => {
-      const content = event.target?.result as string;
+    reader.onload = async (event) => {
+      let content = event.target?.result as string;
+
+      if (isEncryptedBackup(content)) {
+        if (!passphrase) {
+          setImportError('This backup is encrypted — enter its passphrase above, then import again.');
+          return;
+        }
+        try {
+          content = await decryptBackup(content, passphrase);
+        } catch {
+          setImportError('Wrong passphrase (or the file was modified).');
+          return;
+        }
+      }
+
       const imported = importData(content);
       if (imported) {
         dispatch({ type: 'IMPORT_DATA', payload: imported });
@@ -279,7 +294,23 @@ export default function SettingsPage() {
           <Panel brackets>
             <CardHeader title="Data · Backup &amp; Restore" />
             <div className="space-y-2.5">
-              <button onClick={handleExport} className="term-btn-ghost w-full">▸ Export Data (JSON)</button>
+              <div>
+                <label className="term-label-plain block mb-1.5">▸ Passphrase (optional)</label>
+                <input
+                  type="password"
+                  value={passphrase}
+                  onChange={(e) => setPassphrase(e.target.value)}
+                  placeholder="Encrypts exports · needed to import them"
+                  autoComplete="new-password"
+                  className="term-input"
+                />
+                <p className="text-[11px] text-ink-500 mt-1">
+                  With a passphrase, backups are AES-256 encrypted. There is no recovery if you forget it.
+                </p>
+              </div>
+              <button onClick={handleExport} className="term-btn-ghost w-full">
+                ▸ Export Data ({passphrase ? 'Encrypted' : 'Plain JSON'})
+              </button>
               <button onClick={handleImportClick} className="term-btn-ghost w-full">▸ Import Data</button>
               <input
                 ref={fileInputRef}
