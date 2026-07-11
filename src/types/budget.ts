@@ -11,23 +11,10 @@ export interface BudgetItem {
   amount: number; // Amount in the specified frequency (ignored if isAutoCalculated)
   frequency: Frequency;
   category: BudgetCategory;
-  isAutoCalculated?: boolean; // If true, amount is sum of children
-  isSubscription?: boolean; // For regular expenses tracking
-  parentId?: string; // For sub-items
+  parentId?: string; // For sub-items; parents auto-sum their children
   linkedToId?: string; // Links to investment/savings bucket ID (auto-synced)
   linkedToType?: 'investment' | 'savings_bucket' | 'housing' | 'mortgage' | 'housing_expense'; // Type of linked item
   notes?: string;
-  createdAt: number;
-  updatedAt: number;
-}
-
-// Regular expense (subscription) with yearly/monthly cost converted to weekly
-export interface RegularExpense {
-  id: string;
-  name: string;
-  amount: number;
-  frequency: 'monthly' | 'yearly';
-  budgetItemId?: string; // Links to parent budget item
   createdAt: number;
   updatedAt: number;
 }
@@ -55,9 +42,12 @@ export interface Investment {
   type: 'etf' | 'kiwisaver' | 'other';
   currentValue: number; // Manually updated periodically
   currentValueUpdatedAt: number; // When currentValue was last updated
-  weeklyContribution: number;
+  weeklyContribution: number; // Your own contribution (this is what hits the budget)
   expectedReturnRate: number; // Annual % (e.g., 7 for 7%)
   feeRate?: number; // Annual % fees
+  // KiwiSaver extras — counted in projections, not in your weekly budget
+  employerWeeklyContribution?: number;
+  includeGovtContribution?: boolean; // Adds the annual government contribution
   budgetItemId?: string; // Links to budget item (auto-created)
   notes?: string;
   createdAt: number;
@@ -77,6 +67,7 @@ export interface Mortgage {
   extraWeeklyPayment: number; // Additional payments
   startDate: number; // When mortgage was first drawn down (timestamp)
   termYears: number;
+  fixedTermEndDate?: number; // When the current fixed rate expires (timestamp)
   notes?: string;
   createdAt: number;
   updatedAt: number;
@@ -118,7 +109,6 @@ export interface Goal {
   targetDate?: number; // For time-specific goals
   monthsOfExpenses?: number; // For emergency fund (e.g., 6 months)
   notes?: string;
-  linkedBudgetItemIds?: string[]; // Items that contribute to this goal
   createdAt: number;
   updatedAt: number;
 }
@@ -153,16 +143,26 @@ export interface UserSettings {
   updatedAt: number;
 }
 
+// Point-in-time record of net worth, appended whenever a balance changes
+// (at most one per day). Powers the actual-history chart.
+export interface NetWorthSnapshot {
+  at: number;
+  investments: number;
+  propertyValue: number;
+  mortgageBalance: number;
+  netWorth: number; // investments + propertyValue - mortgageBalance
+}
+
 // Main data store shape
 export interface BudgetStore {
   settings: UserSettings;
   budgetItems: BudgetItem[];
-  regularExpenses: RegularExpense[];
   savingsBuckets: SavingsBucket[];
   investments: Investment[];
   mortgages: Mortgage[];
   goals: Goal[];
   sharedHousing?: SharedHousing;
+  netWorthHistory: NetWorthSnapshot[];
 }
 
 // Default settings for new users
@@ -188,10 +188,10 @@ export const DEFAULT_SETTINGS: UserSettings = {
 export const INITIAL_STORE: BudgetStore = {
   settings: DEFAULT_SETTINGS,
   budgetItems: [],
-  regularExpenses: [],
   savingsBuckets: [],
   investments: [],
   mortgages: [],
   goals: [],
   sharedHousing: undefined,
+  netWorthHistory: [],
 };

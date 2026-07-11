@@ -102,6 +102,25 @@ export default function PaydayModal({ onClose }: PaydayModalProps) {
     }));
   };
 
+  // Tap the amount to type it directly — steppers are for nudges
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draft, setDraft] = useState('');
+
+  const startEditing = (id: string, current: number) => {
+    setEditingId(id);
+    setDraft(String(Math.round(current)));
+  };
+
+  const commitEdit = () => {
+    if (editingId !== null) {
+      const parsed = parseFloat(draft);
+      if (Number.isFinite(parsed) && parsed >= 0) {
+        setAdjustments((prev) => ({ ...prev, [editingId]: parsed }));
+      }
+    }
+    setEditingId(null);
+  };
+
   const handleSubmit = () => {
     if (payFrequency !== settings.payFrequency) {
       dispatch({ type: 'UPDATE_SETTINGS', payload: { payFrequency } });
@@ -226,12 +245,35 @@ export default function PaydayModal({ onClose }: PaydayModalProps) {
                         <button onClick={() => handleAdjustment(item.id, -10)} className="stepper-btn">−10</button>
                         <button onClick={() => handleAdjustment(item.id, -1)} className="stepper-btn">−</button>
                         <div className="min-w-[110px] text-center px-2">
-                          <FitNumber
-                            value={formatCurrency(currentAmount, false)}
-                            baseSize={22}
-                            minSize={14}
-                            className="text-phosphor-amber font-medium text-center"
-                          />
+                          {editingId === item.id ? (
+                            <input
+                              type="number"
+                              value={draft}
+                              onChange={(e) => setDraft(e.target.value)}
+                              onBlur={commitEdit}
+                              onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                              autoFocus
+                              min="0"
+                              step="1"
+                              inputMode="decimal"
+                              className="term-input mono-num text-center"
+                              aria-label={`${item.name} amount`}
+                            />
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => startEditing(item.id, currentAmount)}
+                              className="w-full"
+                              aria-label={`Edit ${item.name} amount`}
+                            >
+                              <FitNumber
+                                value={formatCurrency(currentAmount, false)}
+                                baseSize={22}
+                                minSize={14}
+                                className="text-phosphor-amber font-medium text-center"
+                              />
+                            </button>
+                          )}
                         </div>
                         <button onClick={() => handleAdjustment(item.id, 1)} className="stepper-btn">+</button>
                         <button onClick={() => handleAdjustment(item.id, 10)} className="stepper-btn">+10</button>

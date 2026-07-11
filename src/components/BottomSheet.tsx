@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 
 interface BottomSheetProps {
   isOpen: boolean;
@@ -78,5 +78,35 @@ export default function BottomSheet({
         @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
       `}</style>
     </>
+  );
+}
+
+// Two-tap destructive button: first tap arms it, second tap (within 3s)
+// fires. Replaces window.confirm() so deletes stay inside the sheet.
+export function ConfirmDeleteButton({
+  onDelete,
+  label = 'Delete',
+  className = '',
+}: {
+  onDelete: () => void;
+  label?: string;
+  className?: string;
+}) {
+  const [armed, setArmed] = useState(false);
+
+  useEffect(() => {
+    if (!armed) return;
+    const t = setTimeout(() => setArmed(false), 3000);
+    return () => clearTimeout(t);
+  }, [armed]);
+
+  return (
+    <button
+      type="button"
+      onClick={() => (armed ? onDelete() : setArmed(true))}
+      className={`term-btn-danger ${armed ? 'term-btn-danger-armed' : ''} ${className}`}
+    >
+      {armed ? 'Tap to confirm' : label}
+    </button>
   );
 }

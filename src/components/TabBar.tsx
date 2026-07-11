@@ -6,7 +6,6 @@ import { usePathname } from 'next/navigation';
 
 interface TabItem {
   href: string;
-  code: string;   // 3-letter terminal code
   label: string;
   icon: React.ReactNode;
 }
@@ -14,8 +13,7 @@ interface TabItem {
 const tabs: TabItem[] = [
   {
     href: '/',
-    code: 'OPS',
-    label: 'Ops',
+    label: 'Home',
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
         <rect x="3.5" y="3.5" width="7" height="7" rx="1" />
@@ -27,7 +25,6 @@ const tabs: TabItem[] = [
   },
   {
     href: '/budget',
-    code: 'BGT',
     label: 'Budget',
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -38,7 +35,6 @@ const tabs: TabItem[] = [
   },
   {
     href: '/wealth',
-    code: 'WLT',
     label: 'Wealth',
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -49,7 +45,6 @@ const tabs: TabItem[] = [
   },
   {
     href: '/goals',
-    code: 'TGT',
     label: 'Goals',
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -61,7 +56,6 @@ const tabs: TabItem[] = [
   },
   {
     href: '/settings',
-    code: 'CFG',
     label: 'Config',
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -90,7 +84,7 @@ export default function TabBar() {
               aria-label={tab.label}
             >
               {tab.icon}
-              <span className="mt-1">{tab.code}</span>
+              <span className="mt-1">{tab.label}</span>
             </Link>
           );
         })}

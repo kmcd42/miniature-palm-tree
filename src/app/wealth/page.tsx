@@ -1,12 +1,12 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import TabBar from '@/components/TabBar';
 import Panel, { CardHeader, FitNumber, StatusDot, ProgressBar } from '@/components/GlassCard';
-import BottomSheet from '@/components/BottomSheet';
-import { WealthLineGraph, DrawdownBands } from '@/components/Charts';
+import BottomSheet, { ConfirmDeleteButton } from '@/components/BottomSheet';
+import { WealthLineGraph, DrawdownBands, NetWorthHistoryChart } from '@/components/Charts';
 import { useBudget } from '@/lib/context';
-import { Investment, Mortgage, HouseExpense } from '@/types/budget';
+import { Investment, Mortgage, HouseExpense, UserSettings } from '@/types/budget';
 import {
   formatCurrency,
   formatCurrencyCompact,
@@ -25,6 +25,9 @@ import {
   yearsInRetirement,
   mortgageYearsElapsed,
   mortgageProgressPercent,
+  effectiveWeeklyContribution,
+  daysUntil,
+  DrawdownProjection,
 } from '@/lib/calculations';
 
 export default function WealthPage() {
@@ -44,7 +47,7 @@ export default function WealthPage() {
     );
   }
 
-  const { settings, investments, mortgages, sharedHousing } = store;
+  const { settings, investments, mortgages, sharedHousing, netWorthHistory } = store;
   const currentAge = getCurrentAge(settings);
 
   const investmentProjections = investments.map((inv) => ({
@@ -57,7 +60,7 @@ export default function WealthPage() {
   }));
 
   const totalInvestmentValue = investmentProjections.reduce((sum, inv) => sum + inv.projectedValue, 0);
-  const totalWeeklyContributions = investments.reduce((sum, inv) => sum + inv.weeklyContribution, 0);
+  const totalWeeklyContributions = investments.reduce((sum, inv) => sum + effectiveWeeklyContribution(inv), 0);
   const totalMortgageBalance = mortgageProjections.reduce((sum, m) => sum + m.projectedBalance, 0);
   const totalPropertyValue = mortgages.reduce((sum, m) => sum + (m.propertyValue || 0), 0);
   const totalEquity = totalPropertyValue - totalMortgageBalance;
@@ -153,12 +156,43 @@ export default function WealthPage() {
           </Panel>
         </div>
 
+        {/* Actual net worth history — recorded whenever balances change */}
+        {(netWorthHistory?.length ?? 0) >= 2 && (
+          <Panel brackets className="mb-4">
+            <div className="flex justify-between items-start gap-3">
+              <CardHeader
+                title="History · Net Worth"
+                subtitle={`${netWorthHistory.length} readings · recorded on balance updates`}
+              />
+              <div className="text-right shrink-0">
+                <div className="term-label-plain">▸ Latest</div>
+                <div className="mono-num text-xl text-phosphor-cyan font-medium mt-0.5">
+                  {formatCurrencyCompact(netWorthHistory[netWorthHistory.length - 1].netWorth)}
+                </div>
+              </div>
+            </div>
+            <NetWorthHistoryChart data={netWorthHistory} height={150} />
+          </Panel>
+        )}
+
         {/* Trajectory chart */}
         {wealthProjectionData.length > 1 && (
-          <Panel brackets className="mb-6">
+          <Panel brackets className="mb-4">
             <CardHeader title="Trajectory · Inflation-Adjusted" subtitle={`Age ${currentAge} → ${settings.retirementAge}`} />
             <WealthLineGraph data={wealthProjectionData} height={220} />
           </Panel>
+        )}
+
+        {/* What-if sandbox */}
+        {drawdown && drawdown.portfolioAtRetirementReal > 0 && (
+          <ScenarioSandbox
+            settings={settings}
+            investments={investments}
+            mortgages={mortgages}
+            propertyValue={totalPropertyValue}
+            currentAge={currentAge}
+            baseline={drawdown}
+          />
         )}
 
         {/* Investments */}
@@ -172,6 +206,8 @@ export default function WealthPage() {
               {investmentProjections.map((inv) => {
                 const projection = projectInvestment(inv, yrsToRet, settings.inflationRate);
                 const valueChanged = inv.projectedValue !== inv.currentValue;
+                const effectiveWeekly = effectiveWeeklyContribution(inv);
+                const hasExtras = effectiveWeekly > inv.weeklyContribution;
                 return (
                   <Panel key={inv.id} onClick={() => setEditingInvestment(inv)}>
                     <div className="flex items-start justify-between gap-3 mb-2">
@@ -198,10 +234,15 @@ export default function WealthPage() {
                       </div>
                     </div>
                     <div className="grid grid-cols-3 gap-3 mt-3 pt-3 border-t border-graphite-600">
-                      <MiniStat label="Weekly" value={formatCurrency(inv.weeklyContribution)} />
+                      <MiniStat label={hasExtras ? 'Weekly (total)' : 'Weekly'} value={formatCurrency(effectiveWeekly)} />
                       <MiniStat label="Return" value={formatPercent(inv.expectedReturnRate)} />
                       <MiniStat label={`At ${settings.retirementAge}`} value={formatCurrencyCompact(projection.real)} accent="mint" />
                     </div>
+                    {hasExtras && (
+                      <div className="font-mono text-[11px] tracking-[0.1em] uppercase text-ink-500 mt-2">
+                        ▸ You {formatCurrency(inv.weeklyContribution)}/wk · employer + govt {formatCurrency(effectiveWeekly - inv.weeklyContribution)}/wk
+                      </div>
+                    )}
                   </Panel>
                 );
               })}
@@ -278,6 +319,18 @@ export default function WealthPage() {
                         value={payoff.payoffDate.toLocaleDateString('en-NZ', { month: 'short', year: 'numeric' })}
                       />
                     </div>
+
+                    {mortgage.fixedTermEndDate && (() => {
+                      const days = daysUntil(mortgage.fixedTermEndDate);
+                      const urgent = days <= 90;
+                      const dateStr = new Date(mortgage.fixedTermEndDate).toLocaleDateString('en-NZ', { day: 'numeric', month: 'short', year: 'numeric' });
+                      return (
+                        <div className={`flex justify-between items-baseline gap-3 mb-3 font-mono text-[11px] tracking-[0.12em] uppercase ${urgent ? 'text-phosphor-amber' : 'text-ink-500'}`}>
+                          <span>▸ Fixed rate expires {dateStr}</span>
+                          <span className="shrink-0">{days < 0 ? `${Math.abs(days)}D AGO` : `${days}D`}</span>
+                        </div>
+                      );
+                    })()}
 
                     <div className="border-l-2 border-phosphor-mint/40 pl-3 py-1.5 bg-phosphor-mint/[0.04] rounded-r-sm">
                       <div className="font-mono text-[10px] tracking-[0.16em] uppercase text-phosphor-mint">▸ Acceleration scenario</div>
@@ -482,6 +535,182 @@ export default function WealthPage() {
   );
 }
 
+// ----- Scenario sandbox -------------------------------------------------------
+
+function ScenarioSandbox({
+  settings, investments, mortgages, propertyValue, currentAge, baseline,
+}: {
+  settings: UserSettings;
+  investments: Investment[];
+  mortgages: Mortgage[];
+  propertyValue: number;
+  currentAge: number;
+  baseline: DrawdownProjection;
+}) {
+  const minAge = Math.min(75, Math.max(50, currentAge + 1));
+  const [retAge, setRetAge] = useState(settings.retirementAge);
+  const [extraWeekly, setExtraWeekly] = useState(0);
+  const [swr, setSwr] = useState(settings.safeWithdrawalRate);
+
+  const isBaseline =
+    retAge === settings.retirementAge && extraWeekly === 0 && swr === settings.safeWithdrawalRate;
+
+  const scenario = useMemo(() => {
+    const scSettings: UserSettings = { ...settings, retirementAge: retAge, safeWithdrawalRate: swr };
+    let scInvestments = investments;
+    if (extraWeekly > 0) {
+      // Model the extra contribution at the portfolio's value-weighted return
+      const totalValue = investments.reduce((s, i) => s + i.currentValue, 0);
+      const avgReturn = totalValue > 0
+        ? investments.reduce((s, i) => s + i.currentValue * (i.expectedReturnRate - (i.feeRate || 0)), 0) / totalValue
+        : 7;
+      const now = Date.now();
+      scInvestments = [
+        ...investments,
+        {
+          id: 'sandbox-extra',
+          name: 'Sandbox extra',
+          type: 'other',
+          currentValue: 0,
+          currentValueUpdatedAt: now,
+          weeklyContribution: extraWeekly,
+          expectedReturnRate: avgReturn,
+          createdAt: now,
+          updatedAt: now,
+        },
+      ];
+    }
+    return generateDrawdownProjection(scSettings, scInvestments, mortgages, propertyValue);
+  }, [settings, investments, mortgages, propertyValue, retAge, extraWeekly, swr]);
+
+  const baselineDeplete = baseline.expectedWeekly + baseline.nzSuperWeekly;
+  const baselinePerpetual = baseline.perpetualWeekly + baseline.nzSuperWeekly;
+  const scenarioDeplete = scenario.expectedWeekly + scenario.nzSuperWeekly;
+  const scenarioPerpetual = scenario.perpetualWeekly + scenario.nzSuperWeekly;
+
+  return (
+    <Panel brackets className="mb-6">
+      <CardHeader
+        title="Sandbox · What-If"
+        subtitle="Drag to test a scenario — nothing is saved"
+        action={
+          !isBaseline ? (
+            <button
+              onClick={() => { setRetAge(settings.retirementAge); setExtraWeekly(0); setSwr(settings.safeWithdrawalRate); }}
+              className="term-btn-ghost text-[10px]"
+            >
+              ▸ Reset
+            </button>
+          ) : undefined
+        }
+      />
+
+      <div className="space-y-4 mb-4">
+        <SliderRow
+          label="Retire at"
+          display={`${retAge}`}
+          value={retAge}
+          min={minAge}
+          max={75}
+          step={1}
+          onChange={setRetAge}
+        />
+        <SliderRow
+          label="Extra invested"
+          display={`${formatCurrency(extraWeekly)}/wk`}
+          value={extraWeekly}
+          min={0}
+          max={500}
+          step={10}
+          onChange={setExtraWeekly}
+        />
+        <SliderRow
+          label="Withdrawal rate"
+          display={`${swr.toFixed(1)}%`}
+          value={swr}
+          min={2.5}
+          max={6}
+          step={0.1}
+          onChange={setSwr}
+        />
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 border-t border-graphite-600">
+        <ScenarioStat
+          label={`Portfolio at ${retAge}`}
+          value={formatCurrencyCompact(scenario.portfolioAtRetirementReal)}
+          delta={scenario.portfolioAtRetirementReal - baseline.portfolioAtRetirementReal}
+          deltaFormat={formatCurrencyCompact}
+        />
+        <ScenarioStat
+          label={`Deplete · to ${settings.lifeExpectancy}`}
+          value={`${formatCurrency(scenarioDeplete)}/wk`}
+          delta={scenarioDeplete - baselineDeplete}
+          deltaFormat={(n) => `${formatCurrency(n)}/wk`}
+        />
+        <ScenarioStat
+          label="Perpetual"
+          value={`${formatCurrency(scenarioPerpetual)}/wk`}
+          delta={scenarioPerpetual - baselinePerpetual}
+          deltaFormat={(n) => `${formatCurrency(n)}/wk`}
+        />
+      </div>
+    </Panel>
+  );
+}
+
+function SliderRow({
+  label, display, value, min, max, step, onChange,
+}: {
+  label: string;
+  display: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <div>
+      <div className="flex justify-between items-baseline mb-1.5 gap-3">
+        <span className="term-label-plain">▸ {label}</span>
+        <span className="mono-num text-sm text-phosphor-amber font-medium shrink-0">{display}</span>
+      </div>
+      <input
+        type="range"
+        value={value}
+        min={min}
+        max={max}
+        step={step}
+        onChange={(e) => onChange(parseFloat(e.target.value))}
+        className="term-range"
+        aria-label={label}
+      />
+    </div>
+  );
+}
+
+function ScenarioStat({
+  label, value, delta, deltaFormat,
+}: {
+  label: string;
+  value: string;
+  delta: number;
+  deltaFormat: (n: number) => string;
+}) {
+  const negligible = Math.abs(delta) < 1;
+  const deltaCls = negligible ? 'text-ink-500' : delta > 0 ? 'text-phosphor-mint' : 'text-phosphor-red';
+  return (
+    <div className="border border-graphite-600 rounded-sm bg-graphite-800/60 p-3">
+      <div className="term-label-plain mb-1">{label}</div>
+      <FitNumber value={value} baseSize={22} minSize={14} className="text-ink-100 font-medium" />
+      <div className={`font-mono text-[11px] tracking-[0.1em] mt-1 ${deltaCls}`}>
+        {negligible ? '· baseline' : `${delta > 0 ? '+' : '−'}${deltaFormat(Math.abs(delta))}`}
+      </div>
+    </div>
+  );
+}
+
 // ----- UI helpers -----------------------------------------------------------
 
 function Stat({ label, value, accent, size = 28 }: { label: string; value: string; accent: 'amber' | 'cyan' | 'mint' | 'violet' | 'red'; size?: number }) {
@@ -544,6 +773,8 @@ function InvestmentSheet({
   const [weeklyContribution, setWeeklyContribution] = useState(investment?.weeklyContribution?.toString() || '');
   const [expectedReturnRate, setExpectedReturnRate] = useState(investment?.expectedReturnRate?.toString() || '7');
   const [feeRate, setFeeRate] = useState(investment?.feeRate?.toString() || '');
+  const [employerWeekly, setEmployerWeekly] = useState(investment?.employerWeeklyContribution?.toString() || '');
+  const [includeGovt, setIncludeGovt] = useState(investment ? !!investment.includeGovtContribution : true);
   const [notes, setNotes] = useState(investment?.notes || '');
 
   React.useEffect(() => {
@@ -553,6 +784,8 @@ function InvestmentSheet({
     setWeeklyContribution(investment?.weeklyContribution?.toString() || '');
     setExpectedReturnRate(investment?.expectedReturnRate?.toString() || '7');
     setFeeRate(investment?.feeRate?.toString() || '');
+    setEmployerWeekly(investment?.employerWeeklyContribution?.toString() || '');
+    setIncludeGovt(investment ? !!investment.includeGovtContribution : true);
     setNotes(investment?.notes || '');
   }, [investment]);
 
@@ -566,6 +799,8 @@ function InvestmentSheet({
       weeklyContribution: parseFloat(weeklyContribution) || 0,
       expectedReturnRate: parseFloat(expectedReturnRate) || 0,
       feeRate: feeRate ? parseFloat(feeRate) : undefined,
+      employerWeeklyContribution: type === 'kiwisaver' && employerWeekly ? parseFloat(employerWeekly) || 0 : undefined,
+      includeGovtContribution: type === 'kiwisaver' ? includeGovt : undefined,
       notes: notes || undefined,
     });
   };
@@ -589,6 +824,20 @@ function InvestmentSheet({
           <Field label="Expected return %"><input type="number" value={expectedReturnRate} onChange={(e) => setExpectedReturnRate(e.target.value)} placeholder="7" step="0.1" className="term-input" /></Field>
           <Field label="Fee % (optional)"><input type="number" value={feeRate} onChange={(e) => setFeeRate(e.target.value)} placeholder="0.5" step="0.01" min="0" className="term-input" /></Field>
         </div>
+        {type === 'kiwisaver' && (
+          <>
+            <Field label="Employer contribution /wk" hint="Grows the balance but doesn't touch your weekly budget">
+              <input type="number" value={employerWeekly} onChange={(e) => setEmployerWeekly(e.target.value)} placeholder="0" step="0.01" min="0" className="term-input" />
+            </Field>
+            <label className="flex items-center justify-between gap-3 cursor-pointer">
+              <span>
+                <span className="term-label-plain block mb-0.5">▸ Government contribution</span>
+                <span className="text-[11px] text-ink-500">25c per $1 you contribute, capped at $260.72/yr</span>
+              </span>
+              <PillToggle active={includeGovt} onClick={() => setIncludeGovt(!includeGovt)} label={includeGovt ? 'ON' : 'OFF'} />
+            </label>
+          </>
+        )}
         <Field label="Notes (optional)"><textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="term-input min-h-[60px] resize-none" /></Field>
         <SheetActions onDelete={onDelete} submitLabel={investment ? 'Save' : 'Add'} />
       </form>
@@ -618,6 +867,9 @@ function MortgageSheet({
   const [startDate, setStartDate] = useState(
     mortgage?.startDate ? new Date(mortgage.startDate).toISOString().split('T')[0] : ''
   );
+  const [fixedTermEnd, setFixedTermEnd] = useState(
+    mortgage?.fixedTermEndDate ? new Date(mortgage.fixedTermEndDate).toISOString().split('T')[0] : ''
+  );
   const [notes, setNotes] = useState(mortgage?.notes || '');
 
   React.useEffect(() => {
@@ -630,6 +882,7 @@ function MortgageSheet({
     setExtraWeeklyPayment(mortgage?.extraWeeklyPayment?.toString() || '0');
     setTermYears(mortgage?.termYears?.toString() || '30');
     setStartDate(mortgage?.startDate ? new Date(mortgage.startDate).toISOString().split('T')[0] : '');
+    setFixedTermEnd(mortgage?.fixedTermEndDate ? new Date(mortgage.fixedTermEndDate).toISOString().split('T')[0] : '');
     setNotes(mortgage?.notes || '');
   }, [mortgage]);
 
@@ -646,6 +899,7 @@ function MortgageSheet({
       extraWeeklyPayment: parseFloat(extraWeeklyPayment) || 0,
       startDate: startDate ? new Date(startDate).getTime() : (mortgage?.startDate || Date.now()),
       termYears: parseInt(termYears) || 30,
+      fixedTermEndDate: fixedTermEnd ? new Date(fixedTermEnd).getTime() : undefined,
       notes: notes || undefined,
     });
   };
@@ -671,6 +925,10 @@ function MortgageSheet({
 
         <Field label="Draw-down date" hint="When the mortgage was first drawn down — used to track years elapsed">
           <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="term-input" />
+        </Field>
+
+        <Field label="Fixed rate expires (optional)" hint="Get a reminder ~90 days out to shop rates before it rolls to floating">
+          <input type="date" value={fixedTermEnd} onChange={(e) => setFixedTermEnd(e.target.value)} className="term-input" />
         </Field>
 
         <div className="grid grid-cols-2 gap-4">
@@ -774,9 +1032,7 @@ function PillToggle({ active, onClick, label }: { active: boolean; onClick: () =
 function SheetActions({ onDelete, submitLabel }: { onDelete?: () => void; submitLabel: string }) {
   return (
     <div className="flex gap-3 pt-4">
-      {onDelete && (
-        <button type="button" onClick={onDelete} className="term-btn-danger">Delete</button>
-      )}
+      {onDelete && <ConfirmDeleteButton onDelete={onDelete} />}
       <button type="submit" className="term-btn flex-1">▸ {submitLabel}</button>
     </div>
   );

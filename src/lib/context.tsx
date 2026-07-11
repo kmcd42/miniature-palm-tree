@@ -1,11 +1,13 @@
 'use client';
 
 import React, { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
-import { v4 as uuidv4 } from 'uuid';
+
+// Native UUIDs — available in every browser this PWA targets, and one less
+// dependency to audit
+const uuidv4 = () => crypto.randomUUID();
 import {
   BudgetStore,
   BudgetItem,
-  RegularExpense,
   SavingsBucket,
   Investment,
   Mortgage,
@@ -13,6 +15,7 @@ import {
   UserSettings,
   SharedHousing,
   HouseExpense,
+  NetWorthSnapshot,
   INITIAL_STORE,
 } from '@/types/budget';
 import { loadStore, saveStore } from './storage';
@@ -25,9 +28,6 @@ type Action =
   | { type: 'ADD_BUDGET_ITEM'; payload: Omit<BudgetItem, 'id' | 'createdAt' | 'updatedAt'> }
   | { type: 'UPDATE_BUDGET_ITEM'; payload: { id: string; updates: Partial<BudgetItem> } }
   | { type: 'DELETE_BUDGET_ITEM'; payload: string }
-  | { type: 'ADD_REGULAR_EXPENSE'; payload: Omit<RegularExpense, 'id' | 'createdAt' | 'updatedAt'> }
-  | { type: 'UPDATE_REGULAR_EXPENSE'; payload: { id: string; updates: Partial<RegularExpense> } }
-  | { type: 'DELETE_REGULAR_EXPENSE'; payload: string }
   | { type: 'ADD_SAVINGS_BUCKET'; payload: Omit<SavingsBucket, 'id' | 'createdAt' | 'updatedAt' | 'currentAmountUpdatedAt'> }
   | { type: 'UPDATE_SAVINGS_BUCKET'; payload: { id: string; updates: Partial<SavingsBucket> } }
   | { type: 'DELETE_SAVINGS_BUCKET'; payload: string }
@@ -45,6 +45,35 @@ type Action =
   | { type: 'UPDATE_HOUSE_EXPENSE'; payload: { id: string; updates: Partial<HouseExpense> } }
   | { type: 'DELETE_HOUSE_EXPENSE'; payload: string }
   | { type: 'IMPORT_DATA'; payload: BudgetStore };
+
+const NET_WORTH_HISTORY_MAX = 730;
+
+// Append today's net worth to the history (replacing an earlier same-day
+// entry) so balance edits build an actual-history line over time.
+function recordNetWorth(state: BudgetStore): BudgetStore {
+  const investments = state.investments.reduce((s, i) => s + i.currentValue, 0);
+  const propertyValue = state.mortgages.reduce((s, m) => s + (m.propertyValue || 0), 0);
+  const mortgageBalance = state.mortgages.reduce((s, m) => s + m.principal, 0);
+  if (investments === 0 && propertyValue === 0 && mortgageBalance === 0) return state;
+
+  const snapshot: NetWorthSnapshot = {
+    at: Date.now(),
+    investments,
+    propertyValue,
+    mortgageBalance,
+    netWorth: investments + propertyValue - mortgageBalance,
+  };
+
+  const history = [...(state.netWorthHistory ?? [])];
+  const last = history[history.length - 1];
+  if (last && new Date(last.at).toDateString() === new Date(snapshot.at).toDateString()) {
+    history[history.length - 1] = snapshot;
+  } else {
+    history.push(snapshot);
+  }
+
+  return { ...state, netWorthHistory: history.slice(-NET_WORTH_HISTORY_MAX) };
+}
 
 function reducer(state: BudgetStore, action: Action): BudgetStore {
   const now = Date.now();
@@ -99,36 +128,6 @@ function reducer(state: BudgetStore, action: Action): BudgetStore {
         ),
       };
 
-    case 'ADD_REGULAR_EXPENSE':
-      return {
-        ...state,
-        regularExpenses: [
-          ...state.regularExpenses,
-          {
-            ...action.payload,
-            id: uuidv4(),
-            createdAt: now,
-            updatedAt: now,
-          },
-        ],
-      };
-
-    case 'UPDATE_REGULAR_EXPENSE':
-      return {
-        ...state,
-        regularExpenses: state.regularExpenses.map((item) =>
-          item.id === action.payload.id
-            ? { ...item, ...action.payload.updates, updatedAt: now }
-            : item
-        ),
-      };
-
-    case 'DELETE_REGULAR_EXPENSE':
-      return {
-        ...state,
-        regularExpenses: state.regularExpenses.filter((item) => item.id !== action.payload),
-      };
-
     case 'ADD_SAVINGS_BUCKET':
       return {
         ...state,
@@ -174,7 +173,7 @@ function reducer(state: BudgetStore, action: Action): BudgetStore {
       };
 
     case 'ADD_INVESTMENT':
-      return {
+      return recordNetWorth({
         ...state,
         investments: [
           ...state.investments,
@@ -186,13 +185,13 @@ function reducer(state: BudgetStore, action: Action): BudgetStore {
             updatedAt: now,
           },
         ],
-      };
+      });
 
     case 'UPDATE_INVESTMENT': {
       const updates = action.payload.updates;
       // If currentValue is being updated, also update the timestamp
       const hasValueUpdate = 'currentValue' in updates;
-      return {
+      return recordNetWorth({
         ...state,
         investments: state.investments.map((item) =>
           item.id === action.payload.id
@@ -204,21 +203,21 @@ function reducer(state: BudgetStore, action: Action): BudgetStore {
               }
             : item
         ),
-      };
+      });
     }
 
     case 'DELETE_INVESTMENT':
-      return {
+      return recordNetWorth({
         ...state,
         investments: state.investments.filter((item) => item.id !== action.payload),
         // Also remove any linked budget items
         budgetItems: state.budgetItems.filter(
           (item) => !(item.linkedToId === action.payload && item.linkedToType === 'investment')
         ),
-      };
+      });
 
     case 'ADD_MORTGAGE':
-      return {
+      return recordNetWorth({
         ...state,
         mortgages: [
           ...state.mortgages,
@@ -230,13 +229,13 @@ function reducer(state: BudgetStore, action: Action): BudgetStore {
             updatedAt: now,
           },
         ],
-      };
+      });
 
     case 'UPDATE_MORTGAGE': {
       const updates = action.payload.updates;
       // If principal is being updated, also update the timestamp
       const hasPrincipalUpdate = 'principal' in updates;
-      return {
+      return recordNetWorth({
         ...state,
         mortgages: state.mortgages.map((item) =>
           item.id === action.payload.id
@@ -248,14 +247,14 @@ function reducer(state: BudgetStore, action: Action): BudgetStore {
               }
             : item
         ),
-      };
+      });
     }
 
     case 'DELETE_MORTGAGE':
-      return {
+      return recordNetWorth({
         ...state,
         mortgages: state.mortgages.filter((item) => item.id !== action.payload),
-      };
+      });
 
     case 'ADD_GOAL':
       return {

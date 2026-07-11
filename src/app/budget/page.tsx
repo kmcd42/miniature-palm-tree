@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import TabBar from '@/components/TabBar';
 import Panel, { CategoryBadge, StatusDot, FitNumber } from '@/components/GlassCard';
-import BottomSheet from '@/components/BottomSheet';
+import BottomSheet, { ConfirmDeleteButton } from '@/components/BottomSheet';
 import { BudgetStackedBar } from '@/components/Charts';
 import { useBudget } from '@/lib/context';
 import { BudgetItem, BudgetCategory, Frequency } from '@/types/budget';
@@ -19,6 +19,7 @@ export default function BudgetPage() {
   const { store, dispatch, isLoaded } = useBudget();
   const [showAddSheet, setShowAddSheet] = useState(false);
   const [editingItem, setEditingItem] = useState<BudgetItem | null>(null);
+  const [syncedInfoItem, setSyncedInfoItem] = useState<BudgetItem | null>(null);
   const [filter, setFilter] = useState<BudgetCategory | 'all'>('all');
   const [collapsedItems, setCollapsedItems] = useState<Set<string>>(new Set());
   const collapseInitialized = useRef(false);
@@ -160,7 +161,15 @@ export default function BudgetPage() {
     ? allBudgetItems
     : allBudgetItems.filter((item) => item.category === filter);
 
-  const parentItems = filteredItems.filter((item) => !item.parentId);
+  // Order by category (necessity → cost → savings), then largest weekly first,
+  // so the list reads as a hierarchy instead of insertion order
+  const categoryOrder: Record<BudgetCategory, number> = { necessity: 0, cost: 1, savings: 2 };
+  const parentItems = filteredItems
+    .filter((item) => !item.parentId)
+    .sort((a, b) =>
+      categoryOrder[a.category] - categoryOrder[b.category] ||
+      getEffectiveWeeklyAmount(b, allBudgetItems) - getEffectiveWeeklyAmount(a, allBudgetItems)
+    );
   const childItems = filteredItems.filter((item) => item.parentId);
 
   const weeklyByCategory = calculateWeeklyByCategoryEffective(allBudgetItems);
@@ -175,13 +184,8 @@ export default function BudgetPage() {
   }));
 
   const handleDelete = (id: string) => {
-    if (id.startsWith('linked-')) {
-      alert('Synced from Wealth — edit it there.');
-      return;
-    }
-    if (confirm('Delete this budget item?')) {
-      dispatch({ type: 'DELETE_BUDGET_ITEM', payload: id });
-    }
+    if (id.startsWith('linked-')) return;
+    dispatch({ type: 'DELETE_BUDGET_ITEM', payload: id });
   };
 
   return (
@@ -277,7 +281,7 @@ export default function BudgetPage() {
                   key={item.id}
                   onClick={() => {
                     if (isLinked) {
-                      alert('Synced from Wealth — edit it there.');
+                      setSyncedInfoItem(item);
                     } else {
                       setEditingItem(item);
                     }
@@ -348,7 +352,8 @@ export default function BudgetPage() {
                             className="flex justify-between items-start pl-3 border-l border-graphite-550 cursor-pointer hover:bg-graphite-800/60 py-1.5 rounded-r-sm"
                             onClick={(e) => {
                               e.stopPropagation();
-                              if (!child.id.startsWith('linked-')) setEditingItem(child);
+                              if (child.id.startsWith('linked-')) setSyncedInfoItem(child);
+                              else setEditingItem(child);
                             }}
                           >
                             <div className="min-w-0">
@@ -402,7 +407,36 @@ export default function BudgetPage() {
           setEditingItem(null);
         } : undefined}
       />
+
+      <SyncedItemSheet item={syncedInfoItem} onClose={() => setSyncedInfoItem(null)} />
     </main>
+  );
+}
+
+// Info sheet for items synced from Wealth — explains where the number comes
+// from and links there, instead of a dead-end alert()
+function SyncedItemSheet({ item, onClose }: { item: BudgetItem | null; onClose: () => void }) {
+  const source = item?.linkedToType === 'housing' || item?.linkedToType === 'mortgage' || item?.linkedToType === 'housing_expense'
+    ? { label: 'Shared Household', description: 'This line is your income-weighted share of a shared household expense.' }
+    : item?.linkedToType === 'savings_bucket'
+    ? { label: 'Savings Bucket', description: 'This line mirrors the weekly contribution on a savings bucket.' }
+    : { label: 'Investment', description: 'This line mirrors the weekly contribution on an investment.' };
+
+  return (
+    <BottomSheet isOpen={!!item} onClose={onClose} code="SYNC" title={item?.name || 'Synced item'}>
+      <div className="space-y-4">
+        <p className="text-sm text-ink-300 leading-relaxed">
+          {source.description} It updates automatically — edit the source in{' '}
+          {item?.linkedToType === 'savings_bucket' ? 'Goals' : 'Wealth'} and this line follows.
+        </p>
+        <a
+          href={item?.linkedToType === 'savings_bucket' ? '/goals' : '/wealth'}
+          className="term-btn w-full"
+        >
+          ▸ Open {item?.linkedToType === 'savings_bucket' ? 'Goals' : 'Wealth'}
+        </a>
+      </div>
+    </BottomSheet>
   );
 }
 
@@ -529,9 +563,7 @@ function BudgetItemSheet({
         </div>
 
         <div className="flex gap-3 pt-3">
-          {onDelete && (
-            <button type="button" onClick={onDelete} className="term-btn-danger">Delete</button>
-          )}
+          {onDelete && <ConfirmDeleteButton onDelete={onDelete} />}
           <button type="submit" className="term-btn flex-1">▸ {item ? 'Save' : 'Add'}</button>
         </div>
       </form>
