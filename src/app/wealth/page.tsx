@@ -100,7 +100,7 @@ export default function WealthPage() {
             subtitle="Investments + property − debt"
             action={
               drawdown && drawdown.portfolioAtRetirementReal > 0 ? (
-                <button onClick={() => setShowSandbox(true)} className="term-btn-ghost text-[10px]">
+                <button onClick={() => setShowSandbox(true)} className="term-btn text-[10px] py-1.5 px-3">
                   ▸ Sandbox
                 </button>
               ) : undefined
@@ -117,10 +117,10 @@ export default function WealthPage() {
               <button
                 onClick={() => setShowTrajectory(!showTrajectory)}
                 aria-expanded={showTrajectory}
-                className="w-full flex justify-between items-center font-mono text-[10px] tracking-[0.18em] uppercase text-ink-500 hover:text-ink-100 transition-colors"
+                className="term-btn w-full justify-between text-[10px]"
               >
-                <span>▸ Trajectory · Inflation-Adjusted · Age {currentAge} → {settings.retirementAge}</span>
-                <span className="text-phosphor-amber">{showTrajectory ? '▴' : '▾'}</span>
+                <span>▸ Trajectory · Age {currentAge} → {settings.retirementAge}</span>
+                <span>{showTrajectory ? '▴' : '▾'}</span>
               </button>
               {showTrajectory && (
                 <div className="mt-3">
