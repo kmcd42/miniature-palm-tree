@@ -4,7 +4,7 @@ import React, { useMemo, useState } from 'react';
 import TabBar from '@/components/TabBar';
 import Panel, { CardHeader, FitNumber, StatusDot, ProgressBar } from '@/components/GlassCard';
 import BottomSheet, { ConfirmDeleteButton } from '@/components/BottomSheet';
-import { WealthLineGraph, DrawdownBands, NetWorthHistoryChart } from '@/components/Charts';
+import { WealthLineGraph, NetWorthHistoryChart } from '@/components/Charts';
 import { useBudget } from '@/lib/context';
 import { Investment, Mortgage, HouseExpense, UserSettings } from '@/types/budget';
 import {
@@ -22,7 +22,6 @@ import {
   generateDrawdownProjection,
   getCurrentAge,
   yearsUntilRetirement,
-  yearsInRetirement,
   mortgageYearsElapsed,
   mortgageProgressPercent,
   effectiveWeeklyContribution,
@@ -38,6 +37,8 @@ export default function WealthPage() {
   const [editingInvestment, setEditingInvestment] = useState<Investment | null>(null);
   const [editingMortgage, setEditingMortgage] = useState<Mortgage | null>(null);
   const [editingHouseExpense, setEditingHouseExpense] = useState<HouseExpense | null>(null);
+  const [showTrajectory, setShowTrajectory] = useState(false);
+  const [showSandbox, setShowSandbox] = useState(false);
 
   if (!isLoaded) {
     return (
@@ -67,7 +68,6 @@ export default function WealthPage() {
   const netWealth = totalInvestmentValue + totalEquity;
 
   const yrsToRet = yearsUntilRetirement(settings);
-  const yrsInRet = yearsInRetirement(settings);
 
   const drawdown = (investments.length > 0 || totalPropertyValue > 0) && currentAge > 0
     ? generateDrawdownProjection(settings, investments, mortgages, totalPropertyValue)
@@ -94,67 +94,42 @@ export default function WealthPage() {
         </header>
 
         {/* Net wealth headline */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
-          <Panel className="lg:col-span-2" brackets scan>
-            <CardHeader title="Net Wealth · Today" subtitle="Investments + property − debt" />
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-              <Stat label="Total" value={formatCurrencyCompact(netWealth)} accent="amber" size={36} />
-              <Stat label="Investments" value={formatCurrencyCompact(totalInvestmentValue)} accent="cyan" />
-              <Stat label="Equity" value={formatCurrencyCompact(totalEquity)} accent="violet" />
+        <Panel brackets scan className="mb-4">
+          <CardHeader
+            title="Net Wealth · Today"
+            subtitle="Investments + property − debt"
+            action={
+              drawdown && drawdown.portfolioAtRetirementReal > 0 ? (
+                <button onClick={() => setShowSandbox(true)} className="term-btn-ghost text-[10px]">
+                  ▸ Sandbox
+                </button>
+              ) : undefined
+            }
+          />
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+            <Stat label="Total" value={formatCurrencyCompact(netWealth)} accent="amber" size={36} />
+            <Stat label="Investments" value={formatCurrencyCompact(totalInvestmentValue)} accent="cyan" />
+            <Stat label="Equity" value={formatCurrencyCompact(totalEquity)} accent="violet" />
+          </div>
+
+          {wealthProjectionData.length > 1 && (
+            <div className="mt-4 pt-3 border-t border-graphite-600">
+              <button
+                onClick={() => setShowTrajectory(!showTrajectory)}
+                aria-expanded={showTrajectory}
+                className="w-full flex justify-between items-center font-mono text-[10px] tracking-[0.18em] uppercase text-ink-500 hover:text-ink-100 transition-colors"
+              >
+                <span>▸ Trajectory · Inflation-Adjusted · Age {currentAge} → {settings.retirementAge}</span>
+                <span className="text-phosphor-amber">{showTrajectory ? '▴' : '▾'}</span>
+              </button>
+              {showTrajectory && (
+                <div className="mt-3">
+                  <WealthLineGraph data={wealthProjectionData} height={220} />
+                </div>
+              )}
             </div>
-          </Panel>
-
-          <Panel brackets glow>
-            <CardHeader title={`Drawdown · ${settings.retirementAge}→${settings.lifeExpectancy}`} subtitle={`${Math.round(yrsToRet)} yr horizon · ${yrsInRet} yr retirement`} />
-            {drawdown && drawdown.portfolioAtRetirementReal > 0 ? (
-              <>
-                {/* Mode A — deplete */}
-                <div className="mb-3">
-                  <div className="term-label-plain mb-0.5">Deplete · spend to zero</div>
-                  <FitNumber
-                    value={`${formatCurrency(drawdown.expectedWeekly + drawdown.nzSuperWeekly)}/wk`}
-                    baseSize={28}
-                    minSize={16}
-                    className="text-phosphor-amber mono-num-glow font-medium"
-                  />
-                  <div className="font-mono text-[10px] tracking-[0.14em] uppercase text-ink-500 mt-1">
-                    PORTFOLIO {formatCurrency(drawdown.expectedWeekly)}{drawdown.nzSuperEligible ? ` + SUPER ${formatCurrency(drawdown.nzSuperWeekly)}` : ''} · TO AGE {settings.lifeExpectancy}
-                  </div>
-                </div>
-
-                {/* Mode B — perpetual */}
-                <div className="mb-3 pt-3 border-t border-graphite-600">
-                  <div className="term-label-plain mb-0.5">Perpetual · live off returns</div>
-                  <FitNumber
-                    value={`${formatCurrency(drawdown.perpetualWeekly + drawdown.nzSuperWeekly)}/wk`}
-                    baseSize={28}
-                    minSize={16}
-                    className="text-phosphor-mint mono-num-glow-mint font-medium"
-                  />
-                  <div className="font-mono text-[10px] tracking-[0.14em] uppercase text-ink-500 mt-1">
-                    PORTFOLIO {formatCurrency(drawdown.perpetualWeekly)}{drawdown.nzSuperEligible ? ` + SUPER ${formatCurrency(drawdown.nzSuperWeekly)}` : ''} · PRINCIPAL PRESERVED
-                  </div>
-                </div>
-
-                <DrawdownBands
-                  conservative={drawdown.conservativeWeekly}
-                  expected={drawdown.expectedWeekly}
-                  optimistic={drawdown.optimisticWeekly}
-                  format={(n) => formatCurrency(n)}
-                />
-                <div className="mt-3 text-[10px] font-mono tracking-[0.14em] uppercase text-ink-500 leading-relaxed">
-                  ▸ Portfolio (investments only): {formatCurrencyCompact(drawdown.portfolioAtRetirementReal)} real · expected real return {(drawdown.realReturnRate * 100).toFixed(1)}%/yr.
-                  Deplete = SWR {settings.safeWithdrawalRate}% · perpetual = SWR − 1% (sequence-of-returns buffer). Bands = SWR ±1.5%.
-                  {!drawdown.nzSuperEligible && settings.includeNzSuper && ` Super activates at age ${drawdown.nzSuperEligibilityAge}.`}
-                </div>
-              </>
-            ) : (
-              <p className="text-sm text-ink-500 py-4">
-                Add investments to compute a sustainable drawdown. House equity isn&apos;t counted — it stays a house.
-              </p>
-            )}
-          </Panel>
-        </div>
+          )}
+        </Panel>
 
         {/* Actual net worth history — recorded whenever balances change */}
         {(netWorthHistory?.length ?? 0) >= 2 && (
@@ -173,26 +148,6 @@ export default function WealthPage() {
             </div>
             <NetWorthHistoryChart data={netWorthHistory} height={150} />
           </Panel>
-        )}
-
-        {/* Trajectory chart */}
-        {wealthProjectionData.length > 1 && (
-          <Panel brackets className="mb-4">
-            <CardHeader title="Trajectory · Inflation-Adjusted" subtitle={`Age ${currentAge} → ${settings.retirementAge}`} />
-            <WealthLineGraph data={wealthProjectionData} height={220} />
-          </Panel>
-        )}
-
-        {/* What-if sandbox */}
-        {drawdown && drawdown.portfolioAtRetirementReal > 0 && (
-          <ScenarioSandbox
-            settings={settings}
-            investments={investments}
-            mortgages={mortgages}
-            propertyValue={totalPropertyValue}
-            currentAge={currentAge}
-            baseline={drawdown}
-          />
         )}
 
         {/* Investments */}
@@ -478,6 +433,19 @@ export default function WealthPage() {
 
       <TabBar />
 
+      {drawdown && drawdown.portfolioAtRetirementReal > 0 && (
+        <ScenarioSandbox
+          isOpen={showSandbox}
+          onClose={() => setShowSandbox(false)}
+          settings={settings}
+          investments={investments}
+          mortgages={mortgages}
+          propertyValue={totalPropertyValue}
+          currentAge={currentAge}
+          baseline={drawdown}
+        />
+      )}
+
       <InvestmentSheet
         isOpen={showAddInvestment || !!editingInvestment}
         onClose={() => { setShowAddInvestment(false); setEditingInvestment(null); }}
@@ -538,8 +506,10 @@ export default function WealthPage() {
 // ----- Scenario sandbox -------------------------------------------------------
 
 function ScenarioSandbox({
-  settings, investments, mortgages, propertyValue, currentAge, baseline,
+  isOpen, onClose, settings, investments, mortgages, propertyValue, currentAge, baseline,
 }: {
+  isOpen: boolean;
+  onClose: () => void;
   settings: UserSettings;
   investments: Investment[];
   mortgages: Mortgage[];
@@ -589,21 +559,18 @@ function ScenarioSandbox({
   const scenarioPerpetual = scenario.perpetualWeekly + scenario.nzSuperWeekly;
 
   return (
-    <Panel brackets className="mb-6">
-      <CardHeader
-        title="Sandbox · What-If"
-        subtitle="Drag to test a scenario — nothing is saved"
-        action={
-          !isBaseline ? (
-            <button
-              onClick={() => { setRetAge(settings.retirementAge); setExtraWeekly(0); setSwr(settings.safeWithdrawalRate); }}
-              className="term-btn-ghost text-[10px]"
-            >
-              ▸ Reset
-            </button>
-          ) : undefined
-        }
-      />
+    <BottomSheet isOpen={isOpen} onClose={onClose} code="SBX" title="Sandbox · What-If">
+      <div className="flex justify-between items-baseline gap-3 mb-4">
+        <p className="text-xs text-ink-300">Drag to test a scenario — nothing is saved</p>
+        {!isBaseline && (
+          <button
+            onClick={() => { setRetAge(settings.retirementAge); setExtraWeekly(0); setSwr(settings.safeWithdrawalRate); }}
+            className="term-btn-ghost text-[10px] shrink-0"
+          >
+            ▸ Reset
+          </button>
+        )}
+      </div>
 
       <div className="space-y-4 mb-4">
         <SliderRow
@@ -655,7 +622,7 @@ function ScenarioSandbox({
           deltaFormat={(n) => `${formatCurrency(n)}/wk`}
         />
       </div>
-    </Panel>
+    </BottomSheet>
   );
 }
 
