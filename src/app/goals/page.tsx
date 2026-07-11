@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import TabBar from '@/components/TabBar';
 import Panel, { CardHeader, ProgressBar, StatusDot, FitNumber } from '@/components/GlassCard';
-import BottomSheet from '@/components/BottomSheet';
+import BottomSheet, { ConfirmDeleteButton } from '@/components/BottomSheet';
 import { useBudget } from '@/lib/context';
 import { Goal, GoalType, SavingsBucket } from '@/types/budget';
 import {
@@ -358,7 +358,7 @@ function GoalSheet({
         </div>
 
         <div className="flex gap-3 pt-3">
-          {onDelete && <button type="button" onClick={onDelete} className="term-btn-danger">Delete</button>}
+          {onDelete && <ConfirmDeleteButton onDelete={onDelete} />}
           <button type="submit" className="term-btn flex-1">▸ {goal ? 'Save' : 'Add'}</button>
         </div>
       </form>
@@ -438,7 +438,7 @@ function BucketSheet({
           <textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="term-input min-h-[60px] resize-none" />
         </div>
         <div className="flex gap-3 pt-3">
-          {onDelete && <button type="button" onClick={onDelete} className="term-btn-danger">Delete</button>}
+          {onDelete && <ConfirmDeleteButton onDelete={onDelete} />}
           <button type="submit" className="term-btn flex-1">▸ {bucket ? 'Save' : 'Add'}</button>
         </div>
       </form>

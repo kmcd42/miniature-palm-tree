@@ -5,7 +5,7 @@ const STORAGE_KEY = 'compound-data';
 const LEGACY_STORAGE_KEY = 'budget-clarity-data';
 const LAST_EXPORT_KEY = 'compound-last-export';
 const EXPORT_SNOOZE_KEY = 'compound-export-snooze';
-const STORAGE_VERSION = 2;
+const STORAGE_VERSION = 3;
 
 const EXPORT_STALE_MS = 30 * 24 * 60 * 60 * 1000; // remind after 30 days
 const EXPORT_SNOOZE_MS = 14 * 24 * 60 * 60 * 1000; // "later" hides for 14 days
@@ -57,6 +57,15 @@ function migrateStore(rawStore: BudgetStore, fromVersion: number): BudgetStore {
       ...migrated,
       settings: migrateSettings(migrated.settings as Partial<UserSettings> & { age?: number }),
     };
+  }
+
+  if (fromVersion < 3) {
+    // v3: net worth history added; regularExpenses (never surfaced in UI) removed
+    delete (migrated as unknown as Record<string, unknown>).regularExpenses;
+  }
+
+  if (!Array.isArray(migrated.netWorthHistory)) {
+    migrated = { ...migrated, netWorthHistory: [] };
   }
 
   return migrated;
@@ -205,4 +214,15 @@ export function clearStore(): void {
     return;
   }
   localStorage.removeItem(STORAGE_KEY);
+}
+
+// Clear everything the app owns (store + export-reminder state)
+export function clearAllAppData(): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  localStorage.removeItem(STORAGE_KEY);
+  localStorage.removeItem(LEGACY_STORAGE_KEY);
+  localStorage.removeItem(LAST_EXPORT_KEY);
+  localStorage.removeItem(EXPORT_SNOOZE_KEY);
 }

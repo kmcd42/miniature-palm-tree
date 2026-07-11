@@ -17,6 +17,7 @@ import {
   generateDrawdownProjection,
   generateInsights,
   buildCompleteBudgetItems,
+  effectiveWeeklyContribution,
   getCurrentAge,
   yearsUntilRetirement,
   yearsInRetirement,
@@ -59,7 +60,7 @@ export default function Dashboard() {
   const uncommittedWeekly = calculateUncommittedIncomeEffective(settings.afterTaxWeeklyIncome, allBudgetItems);
 
   const currentInvestmentValue = investments.reduce((sum, inv) => sum + inv.currentValue, 0);
-  const weeklyInvestmentContributions = investments.reduce((sum, inv) => sum + inv.weeklyContribution, 0);
+  const weeklyInvestmentContributions = investments.reduce((sum, inv) => sum + effectiveWeeklyContribution(inv), 0);
 
   const totalMortgageBalance = mortgages.reduce((sum, m) => sum + m.principal, 0);
   const weeklyMortgagePayments = mortgages.reduce((sum, m) => sum + m.weeklyPayment + m.extraWeeklyPayment, 0);
@@ -283,36 +284,17 @@ export default function Dashboard() {
               </Panel>
             </div>
 
-            {/* Reality Check — NZ benchmarks */}
-            {settings.showBenchmarks && currentAge > 0 && (
-              <RealityCheck
-                age={currentAge}
-                netWealth={currentNetWealth}
-                weeklyIncome={settings.afterTaxWeeklyIncome}
-                weeklySavings={weeklyByCategory.savings}
-                drawdownDeplete={drawdown ? drawdown.expectedWeekly + drawdown.nzSuperWeekly : 0}
-                drawdownPerpetual={drawdown ? drawdown.perpetualWeekly + drawdown.nzSuperWeekly : 0}
-                masseyNoFrills={settings.masseyTwoPersonNoFrills}
-                masseyChoices={settings.masseyTwoPersonChoices}
-              />
-            )}
-
-            {/* Wealth trajectory */}
-            {wealthProjectionData.length > 0 && (
-              <Panel brackets>
-                <div className="flex justify-between items-start mb-4 gap-3">
-                  <div className="min-w-0">
-                    <CardHeader title="Trajectory · Wealth (Real)" subtitle={`Inflation-adjusted · ${settings.inflationRate}%/yr`} />
-                  </div>
-                  <div className="text-right shrink-0">
-                    <div className="term-label-plain">▸ At {settings.retirementAge}</div>
-                    <div className="mono-num text-2xl text-phosphor-mint font-medium mt-0.5">
-                      {formatCurrencyCompact(wealthProjectionData[wealthProjectionData.length - 1]?.netWealth ?? 0)}
-                    </div>
-                  </div>
+            {/* Insight stream — actionable prompts sit with the day-to-day
+                numbers, ahead of the long-range projections */}
+            {insights.length > 0 && (
+              <section className="space-y-2 pt-2">
+                <div className="font-mono text-[11px] tracking-[0.22em] uppercase text-ink-500 pl-1">
+                  ▸ Insight stream · {insights.length} active
                 </div>
-                <WealthLineGraph data={wealthProjectionData} height={180} showLegend />
-              </Panel>
+                {insights.slice(0, 5).map((ins) => (
+                  <InsightRow key={ins.id} insight={ins} />
+                ))}
+              </section>
             )}
 
             {/* Partner contribution panel (Hanni) */}
@@ -357,17 +339,44 @@ export default function Dashboard() {
               </Panel>
             )}
 
-            {/* Insights stream — lives at the bottom; the day-to-day numbers
-                lead, the prompts follow */}
-            {insights.length > 0 && (
-              <section className="space-y-2 pt-2">
-                <div className="font-mono text-[10px] tracking-[0.22em] uppercase text-ink-500 pl-1">
-                  ▸ Insight stream · {insights.length} active
+            {/* Long range — projections and benchmarks, grouped below the
+                week-to-week numbers */}
+            {currentAge > 0 && (wealthProjectionData.length > 0 || settings.showBenchmarks) && (
+              <div className="font-mono text-[11px] tracking-[0.22em] uppercase text-ink-500 pl-1 pt-3">
+                ▸ Long range · Projections
+              </div>
+            )}
+
+            {/* Wealth trajectory */}
+            {wealthProjectionData.length > 0 && (
+              <Panel brackets>
+                <div className="flex justify-between items-start mb-4 gap-3">
+                  <div className="min-w-0">
+                    <CardHeader title="Trajectory · Wealth (Real)" subtitle={`Inflation-adjusted · ${settings.inflationRate}%/yr`} />
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="term-label-plain">▸ At {settings.retirementAge}</div>
+                    <div className="mono-num text-2xl text-phosphor-mint font-medium mt-0.5">
+                      {formatCurrencyCompact(wealthProjectionData[wealthProjectionData.length - 1]?.netWealth ?? 0)}
+                    </div>
+                  </div>
                 </div>
-                {insights.slice(0, 5).map((ins) => (
-                  <InsightRow key={ins.id} insight={ins} />
-                ))}
-              </section>
+                <WealthLineGraph data={wealthProjectionData} height={180} showLegend />
+              </Panel>
+            )}
+
+            {/* Reality Check — NZ benchmarks */}
+            {settings.showBenchmarks && currentAge > 0 && (
+              <RealityCheck
+                age={currentAge}
+                netWealth={currentNetWealth}
+                weeklyIncome={settings.afterTaxWeeklyIncome}
+                weeklySavings={weeklyByCategory.savings}
+                drawdownDeplete={drawdown ? drawdown.expectedWeekly + drawdown.nzSuperWeekly : 0}
+                drawdownPerpetual={drawdown ? drawdown.perpetualWeekly + drawdown.nzSuperWeekly : 0}
+                masseyNoFrills={settings.masseyTwoPersonNoFrills}
+                masseyChoices={settings.masseyTwoPersonChoices}
+              />
             )}
 
             <ExportReminder />

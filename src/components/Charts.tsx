@@ -167,6 +167,95 @@ function LegendChip({ color, label, dashed = false }: { color: string; label: st
 }
 
 // =========================================================================
+// Net worth history — actual recorded snapshots over time
+// =========================================================================
+
+interface HistoryPoint {
+  at: number; // timestamp
+  netWorth: number;
+}
+
+export function NetWorthHistoryChart({ data, height = 160 }: { data: HistoryPoint[]; height?: number }) {
+  if (data.length < 2) return null;
+
+  const first = data[0].at;
+  const span = data[data.length - 1].at - first || 1;
+  const values = data.map((d) => d.netWorth);
+  const minVal = Math.min(0, ...values);
+  const maxVal = Math.max(...values);
+  const range = maxVal - minVal || 1;
+
+  const scaleX = (at: number) => ((at - first) / span) * 100;
+  const scaleY = (value: number) => 100 - ((value - minVal) / range) * 100;
+
+  const path = data
+    .map((d, i) => `${i === 0 ? 'M' : 'L'} ${scaleX(d.at).toFixed(2)} ${scaleY(d.netWorth).toFixed(2)}`)
+    .join(' ');
+
+  const fmtDate = (ts: number) =>
+    new Date(ts).toLocaleDateString('en-NZ', { month: 'short', year: '2-digit' }).toUpperCase();
+
+  return (
+    <div className="w-full">
+      <svg
+        viewBox="0 0 100 100"
+        preserveAspectRatio="none"
+        style={{ height, width: '100%' }}
+        className="overflow-visible"
+      >
+        <defs>
+          <linearGradient id="historyGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="#5BC8FF" stopOpacity="0.24" />
+            <stop offset="100%" stopColor="#5BC8FF" stopOpacity="0" />
+          </linearGradient>
+          <pattern id="historyGrid" width="20" height="20" patternUnits="userSpaceOnUse">
+            <path d="M 20 0 L 0 0 0 20" fill="none" stroke="rgba(91,200,255,0.06)" strokeWidth="0.3" />
+          </pattern>
+        </defs>
+
+        <rect width="100" height="100" fill="url(#historyGrid)" />
+
+        {minVal < 0 && (
+          <line
+            x1="0" y1={scaleY(0)} x2="100" y2={scaleY(0)}
+            stroke="rgba(122, 139, 145, 0.4)"
+            strokeWidth="0.4"
+            strokeDasharray="1,1"
+            vectorEffect="non-scaling-stroke"
+          />
+        )}
+
+        <path d={`${path} L 100 100 L 0 100 Z`} fill="url(#historyGradient)" />
+        <path
+          d={path}
+          fill="none"
+          stroke="#5BC8FF"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          vectorEffect="non-scaling-stroke"
+          style={{ filter: 'drop-shadow(0 0 4px rgba(91,200,255,0.5))' }}
+        />
+
+        {/* Latest reading marker */}
+        <circle
+          cx={scaleX(data[data.length - 1].at)}
+          cy={scaleY(data[data.length - 1].netWorth)}
+          r="1.4"
+          fill="#5BC8FF"
+          style={{ filter: 'drop-shadow(0 0 3px rgba(91,200,255,0.8))' }}
+        />
+      </svg>
+
+      <div className="flex justify-between font-mono text-[10px] tracking-[0.16em] text-ink-500 mt-2 px-1 uppercase">
+        <span>{fmtDate(data[0].at)}</span>
+        <span>{fmtDate(data[data.length - 1].at)}</span>
+      </div>
+    </div>
+  );
+}
+
+// =========================================================================
 // Horizontal stacked bar — budget breakdown
 // =========================================================================
 

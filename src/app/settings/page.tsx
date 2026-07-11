@@ -4,7 +4,7 @@ import React, { useState, useRef } from 'react';
 import TabBar from '@/components/TabBar';
 import Panel, { CardHeader, StatusDot } from '@/components/GlassCard';
 import { useBudget } from '@/lib/context';
-import { downloadExport, importData } from '@/lib/storage';
+import { downloadExport, importData, clearAllAppData } from '@/lib/storage';
 import { formatCurrency, getCurrentAge } from '@/lib/calculations';
 
 export default function SettingsPage() {
@@ -12,7 +12,15 @@ export default function SettingsPage() {
   const [showExportSuccess, setShowExportSuccess] = useState(false);
   const [showImportSuccess, setShowImportSuccess] = useState(false);
   const [importError, setImportError] = useState('');
+  const [clearArmed, setClearArmed] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Disarm the clear button if it isn't confirmed promptly
+  React.useEffect(() => {
+    if (!clearArmed) return;
+    const t = setTimeout(() => setClearArmed(false), 4000);
+    return () => clearTimeout(t);
+  }, [clearArmed]);
 
   if (!isLoaded) {
     return (
@@ -54,12 +62,12 @@ export default function SettingsPage() {
   };
 
   const handleClearData = () => {
-    if (confirm('Delete ALL data? Export a backup first!')) {
-      if (confirm('Really delete everything?')) {
-        localStorage.clear();
-        window.location.reload();
-      }
+    if (!clearArmed) {
+      setClearArmed(true);
+      return;
     }
+    clearAllAppData();
+    window.location.reload();
   };
 
   const updateSetting = (key: keyof typeof settings, value: number | string | boolean | undefined) => {
@@ -281,7 +289,12 @@ export default function SettingsPage() {
                 className="hidden"
               />
               <div className="border-t border-graphite-600 my-3"></div>
-              <button onClick={handleClearData} className="term-btn-danger w-full">▸ Clear All Data</button>
+              <button
+                onClick={handleClearData}
+                className={`term-btn-danger w-full ${clearArmed ? 'term-btn-danger-armed' : ''}`}
+              >
+                {clearArmed ? '▸ Tap again to erase everything' : '▸ Clear All Data'}
+              </button>
               <p className="text-[11px] text-ink-500 text-center font-mono tracking-[0.14em] uppercase">
                 ▸ PERMANENT · EXPORT FIRST
               </p>

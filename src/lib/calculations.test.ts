@@ -26,6 +26,10 @@ import {
   partnerSplit,
   formatCurrencyCompact,
   generateInsights,
+  kiwiSaverGovtWeekly,
+  effectiveWeeklyContribution,
+  KIWISAVER_GOVT_MAX_ANNUAL,
+  daysUntil,
 } from './calculations';
 import {
   BudgetItem,
@@ -526,5 +530,99 @@ describe('generateInsights', () => {
       })
     );
     expect(insights.some((i) => i.id === 'balanced' && i.severity === 'positive')).toBe(true);
+  });
+});
+
+// ---------- kiwisaver contributions ----------
+
+describe('kiwiSaverGovtWeekly', () => {
+  it('pays 25c per dollar below the cap', () => {
+    // $20/wk member = $1040/yr → govt $260/yr
+    expect(kiwiSaverGovtWeekly(20) * 52).toBeCloseTo(260, 5);
+  });
+
+  it('caps at the annual maximum', () => {
+    expect(kiwiSaverGovtWeekly(100) * 52).toBeCloseTo(KIWISAVER_GOVT_MAX_ANNUAL, 5);
+  });
+
+  it('is zero for zero contribution', () => {
+    expect(kiwiSaverGovtWeekly(0)).toBe(0);
+  });
+});
+
+describe('effectiveWeeklyContribution', () => {
+  it('is just the member contribution for non-KiwiSaver types', () => {
+    const inv = investment({ type: 'etf', weeklyContribution: 200, employerWeeklyContribution: 50 });
+    expect(effectiveWeeklyContribution(inv)).toBe(200);
+  });
+
+  it('adds employer and government contributions for KiwiSaver', () => {
+    const inv = investment({
+      type: 'kiwisaver',
+      weeklyContribution: 60,
+      employerWeeklyContribution: 45,
+      includeGovtContribution: true,
+    });
+    expect(effectiveWeeklyContribution(inv)).toBeCloseTo(
+      60 + 45 + KIWISAVER_GOVT_MAX_ANNUAL / 52,
+      5
+    );
+  });
+
+  it('omits the government contribution unless opted in', () => {
+    const inv = investment({
+      type: 'kiwisaver',
+      weeklyContribution: 60,
+      employerWeeklyContribution: 45,
+    });
+    expect(effectiveWeeklyContribution(inv)).toBe(105);
+  });
+});
+
+// ---------- refix + stale insights ----------
+
+describe('refix and stale-balance insights', () => {
+  function storeWith(overrides: Partial<BudgetStore>): BudgetStore {
+    return { ...INITIAL_STORE, ...overrides };
+  }
+
+  it('daysUntil counts forward and backward', () => {
+    expect(daysUntil(Date.now() + 10 * 24 * 60 * 60 * 1000)).toBe(10);
+    expect(daysUntil(Date.now() - 5 * 24 * 60 * 60 * 1000)).toBe(-5);
+  });
+
+  it('warns when a fixed term expires within 90 days', () => {
+    const insights = generateInsights(
+      storeWith({
+        settings: settings(),
+        mortgages: [mortgage({ fixedTermEndDate: Date.now() + 30 * 24 * 60 * 60 * 1000 })],
+      })
+    );
+    const refix = insights.find((i) => i.id.startsWith('refix-'));
+    expect(refix?.severity).toBe('warn');
+    expect(refix?.headline).toContain('expires in 30d');
+  });
+
+  it('stays quiet when the fixed term is far away', () => {
+    const insights = generateInsights(
+      storeWith({
+        settings: settings(),
+        mortgages: [mortgage({ fixedTermEndDate: Date.now() + 200 * 24 * 60 * 60 * 1000 })],
+      })
+    );
+    expect(insights.some((i) => i.id.startsWith('refix-'))).toBe(false);
+  });
+
+  it('nudges when balances are 90+ days old', () => {
+    const old = Date.now() - 120 * 24 * 60 * 60 * 1000;
+    const insights = generateInsights(
+      storeWith({
+        settings: settings(),
+        investments: [investment({ currentValueUpdatedAt: old, createdAt: old })],
+      })
+    );
+    const stale = insights.find((i) => i.id === 'stale-balances');
+    expect(stale).toBeDefined();
+    expect(stale?.headline).toContain('1 balance');
   });
 });

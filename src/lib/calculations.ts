@@ -129,6 +129,31 @@ export function adjustForInflation(
   return futureAmount / Math.pow(1 + inflationRate, years);
 }
 
+// =========================================================================
+// KIWISAVER CONTRIBUTIONS
+// =========================================================================
+
+// NZ Government contribution: 25c per $1 of member contribution, capped at
+// $260.72/yr (halved from 1 July 2025). Update if policy changes again.
+export const KIWISAVER_GOVT_MAX_ANNUAL = 260.72;
+
+export function kiwiSaverGovtWeekly(memberWeeklyContribution: number): number {
+  const annual = Math.min(memberWeeklyContribution * 52 * 0.25, KIWISAVER_GOVT_MAX_ANNUAL);
+  return annual / 52;
+}
+
+// Total weekly inflow into an investment. For KiwiSaver this includes the
+// employer and (optionally) government contributions — money that grows the
+// balance but never touches the user's weekly budget.
+export function effectiveWeeklyContribution(investment: Investment): number {
+  if (investment.type !== 'kiwisaver') return investment.weeklyContribution;
+  const employer = investment.employerWeeklyContribution || 0;
+  const govt = investment.includeGovtContribution
+    ? kiwiSaverGovtWeekly(investment.weeklyContribution)
+    : 0;
+  return investment.weeklyContribution + employer + govt;
+}
+
 // Calculate investment projections
 export function projectInvestment(
   investment: Investment,
@@ -140,7 +165,7 @@ export function projectInvestment(
 
   const nominal = totalFutureValue(
     investment.currentValue,
-    investment.weeklyContribution,
+    effectiveWeeklyContribution(investment),
     netReturn,
     years
   );
@@ -492,8 +517,9 @@ export function projectCurrentInvestmentValue(investment: Investment): {
   const msPerWeek = 7 * 24 * 60 * 60 * 1000;
   const weeksSinceUpdate = (now - lastUpdate) / msPerWeek;
 
-  // Contributions since last update
-  const contributionsSinceUpdate = investment.weeklyContribution * weeksSinceUpdate;
+  // Contributions since last update (incl. employer/govt for KiwiSaver)
+  const weeklyInflow = effectiveWeeklyContribution(investment);
+  const contributionsSinceUpdate = weeklyInflow * weeksSinceUpdate;
 
   // Growth on existing balance
   const weeklyRate = Math.pow(1 + investment.expectedReturnRate / 100, 1 / 52) - 1;
@@ -503,7 +529,7 @@ export function projectCurrentInvestmentValue(investment: Investment): {
   // Project value: (existing * growth) + FV of contributions
   const existingWithGrowth = investment.currentValue * growthMultiplier;
   const contributionsWithGrowth = netWeeklyRate > 0
-    ? investment.weeklyContribution * ((growthMultiplier - 1) / netWeeklyRate)
+    ? weeklyInflow * ((growthMultiplier - 1) / netWeeklyRate)
     : contributionsSinceUpdate;
 
   const projectedValue = existingWithGrowth + contributionsWithGrowth;
@@ -916,13 +942,13 @@ export function weightedAvgRealReturn(
   inflationRate: number,
   fallbackSwrPct: number,
 ): number {
-  const totalContrib = investments.reduce((s, i) => s + i.weeklyContribution, 0);
+  const totalContrib = investments.reduce((s, i) => s + effectiveWeeklyContribution(i), 0);
   const totalValue = investments.reduce((s, i) => s + i.currentValue, 0);
 
   let weighted = 0;
   if (totalContrib > 0) {
     for (const inv of investments) {
-      const w = inv.weeklyContribution / totalContrib;
+      const w = effectiveWeeklyContribution(inv) / totalContrib;
       weighted += w * (inv.expectedReturnRate - (inv.feeRate || 0));
     }
   } else if (totalValue > 0) {
@@ -1010,6 +1036,11 @@ export function generateDrawdownProjection(
 // =========================================================================
 // MORTGAGE PROGRESS
 // =========================================================================
+
+// Whole days from now until a timestamp (negative if past)
+export function daysUntil(timestamp: number): number {
+  return Math.ceil((timestamp - Date.now()) / (24 * 60 * 60 * 1000));
+}
 
 // Years elapsed since the mortgage was drawn down
 export function mortgageYearsElapsed(mortgage: Mortgage): number {
@@ -1239,7 +1270,52 @@ export function generateInsights(store: BudgetStore): Insight[] {
     }
   }
 
-  // 6) Goal pacing — flag goals that are off-pace
+  // 6) Mortgage refix — fixed term expiring within 90 days (or already past)
+  for (const m of mortgages) {
+    if (!m.fixedTermEndDate) continue;
+    const days = daysUntil(m.fixedTermEndDate);
+    if (days > 90) continue;
+    insights.push({
+      id: `refix-${m.id}`,
+      severity: 'warn',
+      label: 'MORTGAGE · REFIX',
+      headline: days < 0
+        ? `${m.name} fixed term expired ${Math.abs(days)}d ago.`
+        : `${m.name} fixed term expires in ${days}d.`,
+      detail: 'Compare rates before it rolls to floating, then update the rate and expiry here.',
+      actionHref: '/wealth',
+      actionLabel: 'Open mortgage',
+    });
+  }
+
+  // 7) Stale balances — manual numbers not touched in 90+ days drift from reality
+  const STALE_MS = 90 * 24 * 60 * 60 * 1000;
+  const nowMs = Date.now();
+  const staleNames = [
+    ...investments
+      .filter((i) => nowMs - (i.currentValueUpdatedAt || i.createdAt) > STALE_MS)
+      .map((i) => i.name),
+    ...mortgages
+      .filter((m) => nowMs - (m.principalUpdatedAt || m.createdAt) > STALE_MS)
+      .map((m) => m.name),
+    ...savingsBuckets
+      .filter((b) => nowMs - (b.currentAmountUpdatedAt || b.createdAt) > STALE_MS)
+      .map((b) => b.name),
+  ];
+  if (staleNames.length > 0) {
+    const shown = staleNames.slice(0, 3).join(', ');
+    insights.push({
+      id: 'stale-balances',
+      severity: 'info',
+      label: 'DATA · STALE',
+      headline: `${staleNames.length} balance${staleNames.length === 1 ? '' : 's'} not updated in 3+ months.`,
+      detail: `${shown}${staleNames.length > 3 ? ` +${staleNames.length - 3} more` : ''} — projections are only as good as the inputs.`,
+      actionHref: '/wealth',
+      actionLabel: 'Update balances',
+    });
+  }
+
+  // 8) Goal pacing — flag goals that are off-pace
   for (const goal of goals) {
     if (goal.type === 'emergency_fund') continue;
     if (!goal.targetDate || goal.currentAmount >= goal.targetAmount) continue;
