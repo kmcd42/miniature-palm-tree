@@ -12,6 +12,7 @@ import {
   formatCurrencyCompact,
   calculateWeeklyByCategoryEffective,
   calculateUncommittedIncomeEffective,
+  floorDollars,
   calculateEmergencyFundTargetEffective,
   generateWealthProjection,
   generateDrawdownProjection,
@@ -145,7 +146,7 @@ export default function Dashboard() {
               <Panel className="lg:col-span-2" brackets scan>
                 <CardHeader
                   title="Cashflow · Weekly"
-                  subtitle={`Income ${formatCurrency(settings.afterTaxWeeklyIncome)}/wk · ${weeklyByCategory.necessity + weeklyByCategory.cost > 0 ? Math.round(((totalWeeklyCommitted) / settings.afterTaxWeeklyIncome) * 100) : 0}% committed`}
+                  subtitle={`Income ${formatCurrency(floorDollars(settings.afterTaxWeeklyIncome))}/wk · ${weeklyByCategory.necessity + weeklyByCategory.cost > 0 ? Math.round(((totalWeeklyCommitted) / settings.afterTaxWeeklyIncome) * 100) : 0}% committed`}
                 />
                 <div className="grid grid-cols-3 gap-4 mb-4">
                   <CategoryStat label="Necessity" value={weeklyByCategory.necessity} color="red" />

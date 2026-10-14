@@ -10,6 +10,9 @@ import { BudgetItem, BudgetCategory, Frequency } from '@/types/budget';
 import {
   formatCurrency,
   toWeekly,
+  lineItemWeekly,
+  floorDollars,
+  ceilDollars,
   getEffectiveWeeklyAmount,
   calculateWeeklyByCategoryEffective,
   calculateSharedHousing,
@@ -174,7 +177,7 @@ export default function BudgetPage() {
 
   const weeklyByCategory = calculateWeeklyByCategoryEffective(allBudgetItems);
   const totalWeeklyCommitted = weeklyByCategory.necessity + weeklyByCategory.cost + weeklyByCategory.savings;
-  const uncommitted = settings.afterTaxWeeklyIncome - totalWeeklyCommitted;
+  const uncommitted = floorDollars(settings.afterTaxWeeklyIncome) - totalWeeklyCommitted;
 
   const barChartData = parentItems.map((item) => ({
     id: item.id,
@@ -204,7 +207,7 @@ export default function BudgetPage() {
         {/* Allocation bar */}
         {settings.afterTaxWeeklyIncome > 0 && barChartData.length > 0 && (
           <Panel className="mb-4">
-            <div className="term-label-plain mb-3">▸ Allocation · {formatCurrency(settings.afterTaxWeeklyIncome)}/wk income</div>
+            <div className="term-label-plain mb-3">▸ Allocation · {formatCurrency(floorDollars(settings.afterTaxWeeklyIncome))}/wk income</div>
             <BudgetStackedBar items={barChartData} totalIncome={settings.afterTaxWeeklyIncome} height={22} />
           </Panel>
         )}
@@ -214,7 +217,7 @@ export default function BudgetPage() {
           <div className="flex justify-between items-end gap-4 mb-4 flex-wrap">
             <div>
               <div className="term-label-plain mb-1">▸ Weekly income</div>
-              <FitNumber value={formatCurrency(settings.afterTaxWeeklyIncome)} baseSize={28} minSize={16} className="text-ink-100 font-medium" />
+              <FitNumber value={formatCurrency(floorDollars(settings.afterTaxWeeklyIncome))} baseSize={28} minSize={16} className="text-ink-100 font-medium" />
             </div>
             <div className="text-right">
               <div className="term-label-plain mb-1">▸ Uncommitted</div>
@@ -309,7 +312,7 @@ export default function BudgetPage() {
                       </div>
                       {!isParent && (
                         <div className="font-mono text-[10px] tracking-[0.14em] uppercase text-ink-500 mt-0.5">
-                          {formatCurrency(item.amount)}/{item.frequency}
+                          {formatCurrency(ceilDollars(item.amount))}/{item.frequency}
                         </div>
                       )}
                       {isParent && !isHousingParent && (
@@ -345,7 +348,7 @@ export default function BudgetPage() {
                   {itemChildren.length > 0 && !isCollapsed && (
                     <div className="mt-3 pt-3 border-t border-graphite-600 space-y-1.5">
                       {itemChildren.map((child) => {
-                        const childWeekly = toWeekly(child.amount, child.frequency);
+                        const childWeekly = lineItemWeekly(child);
                         return (
                           <div
                             key={child.id}

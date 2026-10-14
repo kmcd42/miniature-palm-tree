@@ -62,6 +62,22 @@ export function toWeekly(amount: number, frequency: Frequency): number {
   }
 }
 
+// Budget rounding is conservative: money in rounds down, money out rounds up,
+// so a whole-dollar budget never shows more headroom than you really have.
+// The epsilon stops float noise (e.g. 119.99999999) from costing a dollar.
+export function floorDollars(amount: number): number {
+  return Math.floor(amount + 1e-9);
+}
+
+export function ceilDollars(amount: number): number {
+  return Math.ceil(amount - 1e-9);
+}
+
+// Weekly amount of a single budget line (an outgoing), rounded up
+export function lineItemWeekly(item: Pick<BudgetItem, 'amount' | 'frequency'>): number {
+  return ceilDollars(toWeekly(item.amount, item.frequency));
+}
+
 // Convert weekly amount to other frequencies
 export function fromWeekly(weeklyAmount: number, targetFrequency: Frequency): number {
   switch (targetFrequency) {
@@ -255,7 +271,7 @@ export function calculateWeeklyByCategory(
   };
 
   for (const item of items) {
-    const weekly = toWeekly(item.amount, item.frequency);
+    const weekly = lineItemWeekly(item);
     result[item.category] += weekly;
   }
 
@@ -439,7 +455,7 @@ export function getEffectiveWeeklyAmount(
   }
 
   // No children - use own amount
-  return toWeekly(item.amount, item.frequency);
+  return lineItemWeekly(item);
 }
 
 // Check if an item has children (is a parent)
@@ -469,7 +485,7 @@ export function calculateWeeklyByCategoryEffective(
       }
     } else {
       // This is a leaf item - add to its own category
-      const weekly = toWeekly(item.amount, item.frequency);
+      const weekly = lineItemWeekly(item);
       result[item.category] += weekly;
     }
   }
@@ -491,7 +507,7 @@ export function calculateUncommittedIncomeEffective(
 ): number {
   const totals = calculateWeeklyByCategoryEffective(items);
   const totalCommitted = totals.necessity + totals.cost + totals.savings;
-  return weeklyIncome - totalCommitted;
+  return floorDollars(weeklyIncome) - totalCommitted;
 }
 
 // Calculate emergency fund target (X months of necessities + costs) using effective calculation
