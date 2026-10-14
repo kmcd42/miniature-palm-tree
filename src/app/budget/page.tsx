@@ -10,6 +10,7 @@ import { BudgetItem, BudgetCategory, Frequency } from '@/types/budget';
 import {
   formatCurrency,
   toWeekly,
+  lineItemWeekly,
   getEffectiveWeeklyAmount,
   calculateWeeklyByCategoryEffective,
   calculateSharedHousing,
@@ -309,7 +310,7 @@ export default function BudgetPage() {
                       </div>
                       {!isParent && (
                         <div className="font-mono text-[10px] tracking-[0.14em] uppercase text-ink-500 mt-0.5">
-                          {formatCurrency(item.amount)}/{item.frequency}
+                          {formatCurrency(Math.floor(item.amount))}/{item.frequency}
                         </div>
                       )}
                       {isParent && !isHousingParent && (
@@ -345,7 +346,7 @@ export default function BudgetPage() {
                   {itemChildren.length > 0 && !isCollapsed && (
                     <div className="mt-3 pt-3 border-t border-graphite-600 space-y-1.5">
                       {itemChildren.map((child) => {
-                        const childWeekly = toWeekly(child.amount, child.frequency);
+                        const childWeekly = lineItemWeekly(child);
                         return (
                           <div
                             key={child.id}

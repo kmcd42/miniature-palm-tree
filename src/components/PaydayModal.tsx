@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { useBudget } from '@/lib/context';
-import { formatCurrency, toWeekly, buildCompleteBudgetItems, getEffectiveWeeklyAmount } from '@/lib/calculations';
+import { formatCurrency, lineItemWeekly, buildCompleteBudgetItems, getEffectiveWeeklyAmount } from '@/lib/calculations';
 import { FitNumber, CategoryBadge } from '@/components/GlassCard';
 import type { BudgetCategory } from '@/types/budget';
 
@@ -43,7 +43,7 @@ export default function PaydayModal({ onClose }: PaydayModalProps) {
     }> = [];
     allBudgetItems.forEach((item) => {
       if (item.category === 'savings' && !item.parentId) {
-        const weeklyAmount = toWeekly(item.amount, item.frequency);
+        const weeklyAmount = lineItemWeekly(item);
         out.push({
           id: item.id,
           name: item.name,

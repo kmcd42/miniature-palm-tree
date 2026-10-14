@@ -14,6 +14,7 @@ import {
   mortgageExtraPaymentImpact,
   weeklyToReachGoal,
   projectWealthAtAge,
+  lineItemWeekly,
   getEffectiveWeeklyAmount,
   calculateWeeklyByCategoryEffective,
   calculateUncommittedIncomeEffective,
@@ -307,6 +308,20 @@ describe('effective budget calculations', () => {
     expect(totals.necessity).toBeCloseTo(120, 10);
     expect(totals.savings).toBe(30);
     expect(totals.cost).toBe(50); // the parent's 999 never appears
+  });
+
+  it('rounds each line down to the whole dollar', () => {
+    expect(lineItemWeekly({ amount: 50, frequency: 'monthly' })).toBe(11); // 11.54
+    expect(lineItemWeekly({ amount: 99.99, frequency: 'weekly' })).toBe(99);
+    expect(lineItemWeekly({ amount: 520, frequency: 'monthly' })).toBe(120);
+  });
+
+  it('totals sum the rounded-down lines', () => {
+    const lines = [
+      item({ id: 'a', amount: 50, frequency: 'monthly', category: 'cost' }), // 11.54
+      item({ id: 'b', amount: 10.9, category: 'cost' }),
+    ];
+    expect(calculateWeeklyByCategoryEffective(lines).cost).toBe(21);
   });
 
   it('uncommitted income subtracts the effective total', () => {

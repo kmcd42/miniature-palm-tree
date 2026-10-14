@@ -62,6 +62,12 @@ export function toWeekly(amount: number, frequency: Frequency): number {
   }
 }
 
+// Weekly amount of a single budget line, rounded down to the whole dollar.
+// The epsilon stops float noise (e.g. 119.99999999) from costing a dollar.
+export function lineItemWeekly(item: Pick<BudgetItem, 'amount' | 'frequency'>): number {
+  return Math.floor(toWeekly(item.amount, item.frequency) + 1e-9);
+}
+
 // Convert weekly amount to other frequencies
 export function fromWeekly(weeklyAmount: number, targetFrequency: Frequency): number {
   switch (targetFrequency) {
@@ -255,7 +261,7 @@ export function calculateWeeklyByCategory(
   };
 
   for (const item of items) {
-    const weekly = toWeekly(item.amount, item.frequency);
+    const weekly = lineItemWeekly(item);
     result[item.category] += weekly;
   }
 
@@ -439,7 +445,7 @@ export function getEffectiveWeeklyAmount(
   }
 
   // No children - use own amount
-  return toWeekly(item.amount, item.frequency);
+  return lineItemWeekly(item);
 }
 
 // Check if an item has children (is a parent)
@@ -469,7 +475,7 @@ export function calculateWeeklyByCategoryEffective(
       }
     } else {
       // This is a leaf item - add to its own category
-      const weekly = toWeekly(item.amount, item.frequency);
+      const weekly = lineItemWeekly(item);
       result[item.category] += weekly;
     }
   }
