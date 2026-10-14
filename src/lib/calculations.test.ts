@@ -310,22 +310,26 @@ describe('effective budget calculations', () => {
     expect(totals.cost).toBe(50); // the parent's 999 never appears
   });
 
-  it('rounds each line down to the whole dollar', () => {
-    expect(lineItemWeekly({ amount: 50, frequency: 'monthly' })).toBe(11); // 11.54
-    expect(lineItemWeekly({ amount: 99.99, frequency: 'weekly' })).toBe(99);
-    expect(lineItemWeekly({ amount: 520, frequency: 'monthly' })).toBe(120);
+  it('rounds each line up to the whole dollar', () => {
+    expect(lineItemWeekly({ amount: 50, frequency: 'monthly' })).toBe(12); // 11.54
+    expect(lineItemWeekly({ amount: 99.01, frequency: 'weekly' })).toBe(100);
+    expect(lineItemWeekly({ amount: 520, frequency: 'monthly' })).toBe(120); // exact stays exact
   });
 
-  it('totals sum the rounded-down lines', () => {
+  it('totals sum the rounded-up lines', () => {
     const lines = [
       item({ id: 'a', amount: 50, frequency: 'monthly', category: 'cost' }), // 11.54
       item({ id: 'b', amount: 10.9, category: 'cost' }),
     ];
-    expect(calculateWeeklyByCategoryEffective(lines).cost).toBe(21);
+    expect(calculateWeeklyByCategoryEffective(lines).cost).toBe(23);
   });
 
   it('uncommitted income subtracts the effective total', () => {
     expect(calculateUncommittedIncomeEffective(1000, all)).toBeCloseTo(800, 10);
+  });
+
+  it('uncommitted income rounds income down', () => {
+    expect(calculateUncommittedIncomeEffective(769.9, all)).toBe(569);
   });
 
   it('emergency fund target covers necessities and costs', () => {

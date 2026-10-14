@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { useBudget } from '@/lib/context';
-import { formatCurrency, lineItemWeekly, buildCompleteBudgetItems, getEffectiveWeeklyAmount } from '@/lib/calculations';
+import { formatCurrency, lineItemWeekly, ceilDollars, buildCompleteBudgetItems, getEffectiveWeeklyAmount } from '@/lib/calculations';
 import { FitNumber, CategoryBadge } from '@/components/GlassCard';
 import type { BudgetCategory } from '@/types/budget';
 
@@ -48,7 +48,7 @@ export default function PaydayModal({ onClose }: PaydayModalProps) {
           id: item.id,
           name: item.name,
           weeklyAmount,
-          periodAmount: weeklyAmount * multiplier,
+          periodAmount: ceilDollars(weeklyAmount * multiplier),
           linkedToType: item.linkedToType,
           linkedToId: item.linkedToId,
         });
@@ -77,7 +77,7 @@ export default function PaydayModal({ onClose }: PaydayModalProps) {
         id: item.id,
         name: item.name,
         category: item.category,
-        periodAmount: weekly * multiplier,
+        periodAmount: ceilDollars(weekly * multiplier),
       });
     }
     const order: Record<BudgetCategory, number> = { necessity: 0, cost: 1, savings: 2 };
